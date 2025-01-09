@@ -4,42 +4,42 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
-namespace print {
-void print(uint8_t value) { printf("%u", value); }
-void print(uint16_t value) { printf("%u", value); }
-void print(uint32_t value) { printf("%u", value); }
-void print(uint64_t value) { printf("%lu", value); }
-void print(int8_t value) { printf("%d", value); }
-void print(int16_t value) { printf("%d", value); }
-void print(int32_t value) { printf("%d", value); }
-void print(int64_t value) { printf("%ld", value); }
-void print(float value) { printf("%f", value); }
-void print(double value) { printf("%f", value); }
-void print(bool value) { printf(value ? "true" : "false"); }
-template <typename T, std::size_t N> void print(const T (&value)[N]) {
-  printf("[");
-  for (uint32_t i = 0; i < N; ++i) {
-    if (i) {
-      printf(", ");
-    }
-    print(value[i]);
-  }
-  printf("]");
+namespace fmt {
+
+template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
+std::string repr(T value) {
+  return std::to_string(value);
 }
-template <typename T> void print(const std::vector<T> &value) {
-  printf("[");
-  for (uint32_t i = 0; i < value.size(); ++i) {
+
+std::string repr(bool value) { return value ? "true" : "false"; }
+
+// todo: implement tuple
+std::string repr(const std::tuple<> &) { return "unit"; }
+
+template <typename T> std::string repr(const std::vector<T> &value) {
+  const std::size_t n = value.size();
+  std::stringstream s;
+  s << "[";
+  for (std::size_t i = 0; i < n; ++i) {
     if (i) {
-      printf(", ");
+      s << ", ";
     }
-    print(value[i]);
+    s << repr(value[i]);
   }
-  printf("]");
+  s << "]";
+  return s.str();
 }
-void print(const std::string &value) { printf("\"%s\"", value.c_str()); }
-}; // namespace print
+
+std::string repr(const std::string &value) {
+  std::stringstream s;
+  s << "\"" << value << "\"";
+  return s.str();
+}
+
+}; // namespace fmt
 
 namespace pack {
 enum type_id : uint8_t {
@@ -289,9 +289,7 @@ inline static std::optional<std::tuple<Ts...>> unpack(const Bytes &data) {
 }; // namespace pack
 
 template <typename T> void test_pack_only(const T &value) {
-  printf("input: ");
-  print::print(value);
-  printf("\n");
+  printf("input: %s\n", fmt::repr(value).c_str());
 
   const auto packed = pack::pack(value);
   printf("packed:\n");
@@ -299,9 +297,7 @@ template <typename T> void test_pack_only(const T &value) {
 }
 
 template <typename T> void test(const T &value) {
-  printf("input: ");
-  print::print(value);
-  printf("\n");
+  printf("input: %s\n", fmt::repr(value).c_str());
 
   const auto packed = pack::pack(value);
   printf("packed:\n");
@@ -311,16 +307,12 @@ template <typename T> void test(const T &value) {
   if (!unpacked)
     printf("failed to unpack\n");
   else {
-    printf("unpacked: ");
-    print::print(*unpacked);
-    printf("\n");
+    printf("unpacked: %s\n", fmt::repr(*unpacked).c_str());
   }
 }
 
 int main() {
   test<uint32_t>(5);
-  printf("\n");
-  test_pack_only<float[5]>({1, 2, 3, 4, 5});
   printf("\n");
   test<std::vector<int8_t>>({-1, 1, -2, 2, -3, 3, -4, 4});
   printf("\n");
