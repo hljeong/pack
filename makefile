@@ -2,7 +2,7 @@
 CC = g++ -Wall -g -std=c++17
 PY = python3
 
-.PHONY: all clean test cpp
+.PHONY: all clean test update cpp py
 
 all: test
 
@@ -14,6 +14,8 @@ test: cpp
 	@$(PY) py/test.py
 	@echo "all tests passed"
 
+update:
+	@git submodule foreach git pull origin main
 
 cpp: cpp/pack.h cpp/test.cc
 	@$(CC) cpp/test.cc
