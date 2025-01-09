@@ -356,7 +356,7 @@ template <typename... Ts>
 inline static std::optional<std::tuple<Ts...>> unpack(const Bytes &data) {
   Unpacker up(data);
   const std::tuple<std::optional<Ts>...> value_opts = {up.unpack<Ts>()...};
-  const auto disjunct = [](const Ts... value_opts) {
+  const auto disjunct = [](const std::optional<Ts> &...value_opts) {
     return (!value_opts || ...)
                ? std::nullopt
                : std::make_optional(std::make_tuple(*value_opts...));
