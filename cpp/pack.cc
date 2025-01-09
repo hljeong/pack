@@ -7,39 +7,7 @@
 #include <tuple>
 #include <vector>
 
-namespace fmt {
-
-template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-std::string repr(T value) {
-  return std::to_string(value);
-}
-
-std::string repr(bool value) { return value ? "true" : "false"; }
-
-// todo: implement tuple
-std::string repr(const std::tuple<> &) { return "unit"; }
-
-template <typename T> std::string repr(const std::vector<T> &value) {
-  const std::size_t n = value.size();
-  std::stringstream s;
-  s << "[";
-  for (std::size_t i = 0; i < n; ++i) {
-    if (i) {
-      s << ", ";
-    }
-    s << repr(value[i]);
-  }
-  s << "]";
-  return s.str();
-}
-
-std::string repr(const std::string &value) {
-  std::stringstream s;
-  s << "\"" << value << "\"";
-  return s.str();
-}
-
-}; // namespace fmt
+#include "cpp_utils/fmt/fmt.h"
 
 namespace pack {
 enum type_id : uint8_t {
@@ -57,6 +25,7 @@ enum type_id : uint8_t {
   bool_type = 0x30,
   list_type = 0x40,
   string_type = 0x41,
+  optional_type = 0x42,
 };
 
 using Bytes = std::vector<uint8_t>;
@@ -186,19 +155,6 @@ template <> const Pack type<float>::type_info = {float_type};
 template <> const Pack type<double>::type_info = {double_type};
 template <> const Pack type<bool>::type_info = {bool_type};
 
-template <typename T, std::size_t N> struct type<T[N]> {
-  inline static const Pack type_info = Pack(list_type, pack::type_info<T>);
-  static Pack pack(const T (&value)[N]) {
-    Packer p{};
-    p.pack_value<uint32_t>(N);
-    for (const auto &elem : value) {
-      p.pack_value(elem);
-    }
-    return *p;
-  }
-  static std::optional<T[N]> unpack(Unpacker *up) = delete;
-};
-
 template <typename T> struct type<std::vector<T>> {
   inline static const Pack type_info = Pack(list_type, pack::type_info<T>);
   static Pack pack(const std::vector<T> &value) {
@@ -252,9 +208,44 @@ template <> struct type<std::string> {
     return value.str();
   }
 };
+template <typename T> struct type<std::optional<T>> {
+  inline static const Pack type_info = Pack(optional_type, pack::type_info<T>);
+  static Pack pack(const std::optional<T> &value) {
+    Packer p;
+
+    p.pack_value(!!value);
+
+    if (value) {
+      p.pack_value(*value);
+    }
+
+    return *p;
+  }
+  static std::optional<std::optional<T>> unpack(Unpacker &up) {
+    const auto exists_opt = up.unpack_value<bool>();
+    if (!exists_opt) {
+      return std::nullopt;
+    }
+
+    if (!*exists_opt) {
+      return std::make_optional(std::optional<T>(std::nullopt));
+    }
+
+    const auto value_opt = up.unpack_value<T>();
+    if (!value_opt) {
+      return std::nullopt;
+    }
+
+    return *value_opt;
+  }
+};
+
+template <typename T> inline static Pack pack_one(const T &value) {
+  return *Packer().pack(value);
+}
 
 template <typename... Ts> inline static Pack pack(const Ts &...values) {
-  Packer p{};
+  Packer p;
   (p.pack(values), ...);
   return *p;
 }
@@ -317,4 +308,6 @@ int main() {
   test<std::vector<int8_t>>({-1, 1, -2, 2, -3, 3, -4, 4});
   printf("\n");
   test(std::string("hello world"));
+  printf("\n");
+  test<std::optional<uint32_t>>(std::nullopt);
 }
