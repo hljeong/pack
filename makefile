@@ -11,6 +11,8 @@ clean:
 test: cpp
 	@./a.out
 	@rm -rf a.out
+	@echo "all tests passed"
 
-cpp: cpp/pack.cc
-	@$(CC) cpp/pack.cc
+
+cpp: cpp/pack.h cpp/test.cc
+	@$(CC) cpp/test.cc
