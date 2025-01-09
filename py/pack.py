@@ -1,12 +1,17 @@
-from enum import Enum
+import copy
 import struct
 
 # todo: type annotations?
 # todo: unpack<T>() and unpack<(T1, T2)>() syntax?
 
 
-class type_id(Enum):
-    type_type = 0x01
+class Unit(tuple):
+    pass
+
+
+class type_id:
+    type_info_type = 0x01
+    unit_type = 0x02
     uint8_type = 0x10
     uint16_type = 0x11
     uint32_type = 0x12
@@ -20,16 +25,23 @@ class type_id(Enum):
     bool_type = 0x30
     list_type = 0x40
     string_type = 0x41
+    optional_type = 0x42
+
+
+_cached_type = dict()
 
 
 def resolve_type(value):
     def fail(reason=None):
         if reason:
-            raise NotImplementedError(f"{value!r} has unsupported type: {reason}")
+            raise ValueError(f"{value!r} has unsupported type: {reason}")
         else:
-            raise NotImplementedError(f"{value!r} has unsupported type")
+            raise ValueError(f"{value!r} has unsupported type")
 
-    if isinstance(value, int):
+    if value in _cached_type:
+        return _cached_type[value]
+
+    elif isinstance(value, int):
         return int32_type
 
     elif isinstance(value, bool):
@@ -37,7 +49,7 @@ def resolve_type(value):
 
     elif isinstance(value, list):
         if len(value) == 0:
-            fail("list with lenght 0")
+            fail("list with length 0")
 
         elem_type = resolve_type(value[0])
         # todo: implement any(not castable(elem, elem_type) for ...)?
@@ -50,6 +62,13 @@ def resolve_type(value):
         return string_type
 
     fail("not implemented")
+
+
+def typed(value, T=None):
+    value = copy.deepcopy(value)
+    T = T or resolve_type(value)
+    _cached_type[value] = T
+    return value
 
 
 class Pack:
@@ -129,9 +148,116 @@ class Unpacker:
         return self.unpack_value(T) if self._expect(T.type_info) else None
 
 
+class TypeInfo(Pack):
+    def __init__(self, *comps):
+        super().__init__(*comps)
+
+    # todo: is this only possible in dynamically typed languages?
+    # todo: is there an easier way to do this? (how to deal with custom type ids?)
+    @property
+    def T(self):
+        if self.data[0] == 0x01:
+            return type_info_type
+
+        elif self.data[0] == 0x02:
+            return unit_type
+
+        elif self.data[0] == 0x10:
+            return uint8_type
+
+        elif self.data[0] == 0x11:
+            return uint16_type
+
+        elif self.data[0] == 0x12:
+            return uint32_type
+
+        elif self.data[0] == 0x13:
+            return uint64_type
+
+        elif self.data[0] == 0x18:
+            return int8_type
+
+        elif self.data[0] == 0x19:
+            return int16_type
+
+        elif self.data[0] == 0x1A:
+            return int32_type
+
+        elif self.data[0] == 0x1B:
+            return int64_type
+
+        elif self.data[0] == 0x20:
+            return float_type
+
+        elif self.data[0] == 0x20:
+            return double_type
+
+        elif self.data[0] == 0x30:
+            return bool_type
+
+        elif self.data[0] == 0x40:
+            return list_type.of(TypeInfo(self.data[1:]).T)
+
+        elif self.data[0] == 0x41:
+            return string_type
+
+        elif self.data[0] == 0x42:
+            return optional_type.of(TypeInfo(self.data[1:]).T)
+
+        else:
+            raise ValueError(f"bad type info: {list(self.data)}")
+
+
 # todo: reduce boilerplate
+class type_info_type:
+    type_info = TypeInfo(type_id.type_info_type)
+
+    @staticmethod
+    def validate(value):
+        assert isinstance(value, TypeInfo)
+
+    @staticmethod
+    def pack(value):
+        type_info_type.validate(value)
+        p = Packer()
+        p.pack_value(len(value), T=uint8_type)
+        for byte in value:
+            p.pack_value(byte, T=uint8_type)
+        return p.data
+
+    @staticmethod
+    def unpack(up):
+        value = list()
+        n = up.unpack_value(T=uint8_type)
+        if n is None:
+            return None
+        for _ in range(n):
+            byte = up.unpack_value(T=uint8_type)
+            if byte is None:
+                return None
+            value.append(byte)
+        return TypeInfo(bytes(value))
+
+
+class unit_type:
+    type_info = TypeInfo(type_id.unit_type)
+
+    @staticmethod
+    def validate(value):
+        assert isinstance(value, Unit)
+
+    @staticmethod
+    def pack(value):
+        unit_type.validate(value)
+        return Pack()
+
+    @staticmethod
+    def unpack(_):
+        return Unit()
+
+
 class uint8_type:
-    type_info = Pack(type_id.uint8_type.value)
+    type_info = TypeInfo(type_id.uint8_type)
 
     @staticmethod
     def validate(value):
@@ -150,7 +276,7 @@ class uint8_type:
 
 
 class uint16_type:
-    type_info = Pack(type_id.uint16_type.value)
+    type_info = TypeInfo(type_id.uint16_type)
 
     @staticmethod
     def validate(value):
@@ -169,7 +295,7 @@ class uint16_type:
 
 
 class uint32_type:
-    type_info = Pack(type_id.uint32_type.value)
+    type_info = TypeInfo(type_id.uint32_type)
 
     @staticmethod
     def validate(value):
@@ -188,7 +314,7 @@ class uint32_type:
 
 
 class uint64_type:
-    type_info = Pack(type_id.uint64_type.value)
+    type_info = TypeInfo(type_id.uint64_type)
 
     @staticmethod
     def validate(value):
@@ -207,7 +333,7 @@ class uint64_type:
 
 
 class int8_type:
-    type_info = Pack(type_id.int8_type.value)
+    type_info = TypeInfo(type_id.int8_type)
 
     @staticmethod
     def validate(value):
@@ -226,7 +352,7 @@ class int8_type:
 
 
 class int16_type:
-    type_info = Pack(type_id.int16_type.value)
+    type_info = TypeInfo(type_id.int16_type)
 
     @staticmethod
     def validate(value):
@@ -245,7 +371,7 @@ class int16_type:
 
 
 class int32_type:
-    type_info = Pack(type_id.int32_type.value)
+    type_info = TypeInfo(type_id.int32_type)
 
     @staticmethod
     def validate(value):
@@ -264,7 +390,7 @@ class int32_type:
 
 
 class int64_type:
-    type_info = Pack(type_id.int64_type.value)
+    type_info = TypeInfo(type_id.int64_type)
 
     @staticmethod
     def validate(value):
@@ -283,7 +409,7 @@ class int64_type:
 
 
 class float_type:
-    type_info = Pack(type_id.float_type.value)
+    type_info = TypeInfo(type_id.float_type)
 
     # todo: possible to automate checking for castable types?
     @staticmethod
@@ -302,7 +428,7 @@ class float_type:
 
 
 class double_type:
-    type_info = Pack(type_id.double_type.value)
+    type_info = TypeInfo(type_id.double_type)
 
     # todo: possible to automate checking for castable types?
     @staticmethod
@@ -321,7 +447,7 @@ class double_type:
 
 
 class bool_type:
-    type_info = Pack(type_id.bool_type.value)
+    type_info = TypeInfo(type_id.bool_type)
 
     @staticmethod
     def validate(value):
@@ -348,7 +474,7 @@ class list_type:
         if elem_type not in list_type._cache:
 
             class list_type_inst:
-                type_info = Pack(type_id.list_type.value, elem_type.type_info)
+                type_info = TypeInfo(type_id.list_type, elem_type.type_info)
 
                 @staticmethod
                 def validate(value):
@@ -384,7 +510,7 @@ class list_type:
 
 
 class string_type:
-    type_info = Pack(type_id.string_type.value)
+    type_info = TypeInfo(type_id.string_type)
 
     @staticmethod
     def validate(value):
@@ -414,9 +540,59 @@ class string_type:
         return value
 
 
-def pack(value, T=None):
-    T = T or resolve_type(value)
-    return Packer().pack(value, T=T).data
+class optional_type:
+    NULLOPT = type("NULLOPT", (), dict(__repr__=lambda _: "NULLOPT"))()
+
+    _cache = dict()
+
+    # todo: __getitem__ would be nice
+    # todo: maybe even <T> syntax
+    @staticmethod
+    def of(elem_type):
+        if elem_type not in optional_type._cache:
+
+            class optional_type_inst:
+                type_info = TypeInfo(type_id.optional_type, elem_type.type_info)
+
+                @staticmethod
+                def validate(value):
+                    assert value is optional_type.NULLOPT or elem_type.validate(value)
+
+                @staticmethod
+                def pack(value):
+                    optional_type_inst.validate(value)
+                    p = Packer()
+                    p.pack_value(value is not optional_type.NULLOPT, T=bool_type)
+                    if value is not optional_type.NULLOPT:
+                        p.pack_value(value, T=elem_type)
+                    return p.data
+
+                @staticmethod
+                def unpack(up):
+                    exists = up.unpack_value(T=bool_type)
+                    if exists is None:
+                        return None
+                    if not exists:
+                        return optional_type.NULLOPT
+                    value = up.unpack_value(T=elem_type)
+                    if value is None:
+                        return None
+                    return value
+
+            optional_type._cache[elem_type] = optional_type_inst
+
+        return optional_type._cache[elem_type]
+
+
+def pack_one(value, T=None):
+    return Packer().pack(value, T=T or resolve_type(value)).data
+
+
+def pack(*values):
+    p = Packer()
+    for value in values:
+        p.pack(value)
+    return p.data
 
 
 def unpack_one(T, data):

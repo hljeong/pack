@@ -1,5 +1,6 @@
-CC = g++
-FLAGS = -Wall -g -std=c++17
+# todo: python version, venv?
+CC = g++ -Wall -g -std=c++17
+PY = python3
 
 .PHONY: all clean test cpp
 
@@ -10,9 +11,11 @@ clean:
 
 test: cpp
 	@./a.out
-	@rm -rf a.out
+	@$(PY) py/test.py
 	@echo "all tests passed"
 
 
 cpp: cpp/pack.h cpp/test.cc
 	@$(CC) cpp/test.cc
+
+py: py/pack.py py/test.py
