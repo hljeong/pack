@@ -10,6 +10,7 @@ clean:
 
 test: cpp
 	@./a.out
+	@rm -rf a.out
 
 cpp: cpp/pack.cc
 	@$(CC) cpp/pack.cc
