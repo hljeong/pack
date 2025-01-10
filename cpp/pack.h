@@ -34,13 +34,14 @@ enum type_id : uint8_t {
   list_type = 0x40,
   string_type = 0x41,
   optional_type = 0x42,
+  tuple_type = 0x43,
 };
 
 using Bytes = std::vector<uint8_t>;
 
 class Pack : public Bytes {
 public:
-  Pack() : Bytes() {}
+  Pack() = default;
 
   template <typename... Ts> Pack(Ts... comps) : Bytes() {
     (
@@ -72,7 +73,7 @@ template <typename T> std::optional<T> unpack_bits(Unpacker &up);
 
 class TypeInfo : public Pack {
 public:
-  TypeInfo() : Pack() {}
+  TypeInfo() = default;
 
   template <typename... Ts> TypeInfo(Ts... comps) : Pack(comps...) {}
 
@@ -210,27 +211,27 @@ template <> struct type<Unit> {
   static Unit unpack(Unpacker &up) { return {}; }
 };
 
-template <> const TypeInfo type<uint8_t>::type_info = {uint8_type};
+template <> inline const TypeInfo type<uint8_t>::type_info = {uint8_type};
 
-template <> const TypeInfo type<uint16_t>::type_info = {uint16_type};
+template <> inline const TypeInfo type<uint16_t>::type_info = {uint16_type};
 
-template <> const TypeInfo type<uint32_t>::type_info = {uint32_type};
+template <> inline const TypeInfo type<uint32_t>::type_info = {uint32_type};
 
-template <> const TypeInfo type<uint64_t>::type_info = {uint64_type};
+template <> inline const TypeInfo type<uint64_t>::type_info = {uint64_type};
 
-template <> const TypeInfo type<int8_t>::type_info = {int8_type};
+template <> inline const TypeInfo type<int8_t>::type_info = {int8_type};
 
-template <> const TypeInfo type<int16_t>::type_info = {int16_type};
+template <> inline const TypeInfo type<int16_t>::type_info = {int16_type};
 
-template <> const TypeInfo type<int32_t>::type_info = {int32_type};
+template <> inline const TypeInfo type<int32_t>::type_info = {int32_type};
 
-template <> const TypeInfo type<int64_t>::type_info = {int64_type};
+template <> inline const TypeInfo type<int64_t>::type_info = {int64_type};
 
-template <> const TypeInfo type<float>::type_info = {float_type};
+template <> inline const TypeInfo type<float>::type_info = {float_type};
 
-template <> const TypeInfo type<double>::type_info = {double_type};
+template <> inline const TypeInfo type<double>::type_info = {double_type};
 
-template <> const TypeInfo type<bool>::type_info = {bool_type};
+template <> inline const TypeInfo type<bool>::type_info = {bool_type};
 
 template <typename T> struct type<std::vector<T>> {
   inline static const TypeInfo type_info =
@@ -302,6 +303,7 @@ template <> struct type<std::string> {
     return value.str();
   }
 };
+
 template <typename T> struct type<std::optional<T>> {
   inline static const TypeInfo type_info =
       TypeInfo(optional_type, pack::type_info<T>);
@@ -337,13 +339,41 @@ template <typename T> struct type<std::optional<T>> {
   }
 };
 
+template <typename... Ts> struct type<std::tuple<Ts...>> {
+  inline static const TypeInfo type_info = TypeInfo(
+      tuple_type, type<std::vector<TypeInfo>>::pack({pack::type_info<Ts>...}));
+
+  static Pack pack(const std::tuple<Ts...> &value) {
+    Packer p;
+
+    std::apply([&](const Ts &...value_) { (p.pack_value<Ts>(value_), ...); },
+               value);
+
+    return *p;
+  }
+
+  static std::optional<std::tuple<Ts...>> unpack(Unpacker &up) {
+    // todo: this is the same as pack::unpack()...
+    const std::tuple<std::optional<Ts>...> value_opts = {
+        up.unpack_value<Ts>()...};
+    const auto disjunct = [](const std::optional<Ts> &...value_opts_) {
+      return (!value_opts_ || ...)
+                 ? std::nullopt
+                 : std::make_optional(std::make_tuple(*value_opts_...));
+    };
+    return std::apply(disjunct, value_opts);
+  }
+};
+
 template <typename T> inline static Pack pack_one(const T &value) {
   return *Packer().pack(value);
 }
 
 template <typename... Ts> inline static Pack pack(const Ts &...values) {
   Packer p;
+
   (p.pack(values), ...);
+
   return *p;
 }
 

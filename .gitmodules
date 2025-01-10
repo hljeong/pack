@@ -1,3 +1,6 @@
 [submodule "cpp/cpp_utils"]
 	path = cpp/cpp_utils
 	url = git@github.com:hljeong/cpp.git
+[submodule "py/py_utils"]
+	path = py/py_utils
+	url = git@github.com:hljeong/py_utils.git

@@ -30,5 +30,8 @@ int main() {
 
   test<std::optional<uint32_t>>(std::nullopt);
 
+  test<std::tuple<std::vector<int8_t>, std::optional<bool>, std::string,
+                  uint32_t>>({{-1, -2, 3, 4}, std::nullopt, "hi", 12});
+
   return 0;
 }

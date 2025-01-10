@@ -1,12 +1,28 @@
 import copy
 import struct
 
+from py_utils.dicts.dicts import EqDict, IdDict
+
 # todo: type annotations?
 # todo: unpack<T>() and unpack<(T1, T2)>() syntax?
 
 
-class Unit(tuple):
-    pass
+# todo: flesh this out, see pep 661
+class Sentinel:
+    _sentinels = dict()
+
+    def __new__(cls, name):
+        sentinel = super().__new__(cls)
+        sentinel._repr = name  # type: ignore
+        return Sentinel._sentinels.setdefault(name, sentinel)
+
+    def __repr__(self):
+        return self._repr  # type: ignore
+
+
+Unit = Sentinel("Unit")
+
+Nullopt = Sentinel("Nullopt")
 
 
 class type_id:
@@ -26,9 +42,10 @@ class type_id:
     list_type = 0x40
     string_type = 0x41
     optional_type = 0x42
+    tuple_type = 0x43
 
 
-_cached_type = dict()
+_cached_type = IdDict()
 
 
 def resolve_type(value):
@@ -60,6 +77,8 @@ def resolve_type(value):
 
     elif isinstance(value, str):
         return string_type
+
+    # todo: optional, tuple
 
     fail("not implemented")
 
@@ -204,6 +223,17 @@ class TypeInfo(Pack):
         elif self.data[0] == 0x42:
             return optional_type.of(TypeInfo(self.data[1:]).T)
 
+        elif self.data[0] == 0x43:
+            # todo: ugly
+            return tuple_type.of(
+                *(
+                    elem_type_info.T
+                    for elem_type_info in list_type.of(type_info_type).unpack(
+                        Unpacker(self.data[1:])
+                    )
+                )
+            )
+
         else:
             raise ValueError(f"bad type info: {list(self.data)}")
 
@@ -244,7 +274,7 @@ class unit_type:
 
     @staticmethod
     def validate(value):
-        assert isinstance(value, Unit)
+        assert value is Unit
 
     @staticmethod
     def pack(value):
@@ -253,7 +283,7 @@ class unit_type:
 
     @staticmethod
     def unpack(_):
-        return Unit()
+        return Unit
 
 
 class uint8_type:
@@ -541,8 +571,6 @@ class string_type:
 
 
 class optional_type:
-    NULLOPT = type("NULLOPT", (), dict(__repr__=lambda _: "NULLOPT"))()
-
     _cache = dict()
 
     # todo: __getitem__ would be nice
@@ -556,32 +584,87 @@ class optional_type:
 
                 @staticmethod
                 def validate(value):
-                    assert value is optional_type.NULLOPT or elem_type.validate(value)
+                    assert value is Nullopt or elem_type.validate(value)
 
                 @staticmethod
                 def pack(value):
                     optional_type_inst.validate(value)
+
                     p = Packer()
-                    p.pack_value(value is not optional_type.NULLOPT, T=bool_type)
-                    if value is not optional_type.NULLOPT:
+
+                    p.pack_value(value is not Nullopt, T=bool_type)
+
+                    if value is not Nullopt:
                         p.pack_value(value, T=elem_type)
+
                     return p.data
 
                 @staticmethod
                 def unpack(up):
                     exists = up.unpack_value(T=bool_type)
+
                     if exists is None:
                         return None
+
                     if not exists:
-                        return optional_type.NULLOPT
+                        return Nullopt
+
                     value = up.unpack_value(T=elem_type)
                     if value is None:
                         return None
+
                     return value
 
             optional_type._cache[elem_type] = optional_type_inst
 
         return optional_type._cache[elem_type]
+
+
+class tuple_type:
+    _cache = EqDict()
+
+    # todo: __getitem__ would be nice
+    # todo: maybe even <T> syntax
+    @staticmethod
+    def of(*elem_types):
+        if elem_types not in tuple_type._cache:
+
+            class tuple_type_inst:
+                type_info = TypeInfo(
+                    type_id.tuple_type,
+                    list_type.of(type_info_type).pack(
+                        list(elem_type.type_info for elem_type in elem_types)
+                    ),
+                )
+
+                @staticmethod
+                def validate(value):
+                    assert isinstance(value, tuple)
+                    assert len(value) == len(elem_types)
+                    for elem, elem_type in zip(value, elem_types):
+                        elem_type.validate(elem)
+
+                @staticmethod
+                def pack(value):
+                    tuple_type_inst.validate(value)
+
+                    p = Packer()
+
+                    for elem, elem_type in zip(value, elem_types):
+                        p.pack_value(elem, T=elem_type)
+
+                    return p.data
+
+                @staticmethod
+                def unpack(up):
+                    value = tuple(
+                        up.unpack_value(T=elem_type) for elem_type in elem_types
+                    )
+                    return None if any(elem is None for elem in value) else value
+
+            tuple_type._cache[elem_types] = tuple_type_inst
+
+        return tuple_type._cache[elem_types]
 
 
 def pack_one(value, T=None):
@@ -607,32 +690,3 @@ def unpack(Ts, data):
     if any(value is None for value in unpacked):
         return None
     return unpacked
-
-
-def test(value, T=None):
-    T = T or resolve_type(value)
-    print(f"input: {value!r}")
-
-    packed = pack(value, T=T)
-    print("packed:")
-    packed.dump()
-
-    unpacked = unpack_one(T, packed)
-    if unpacked is None:
-        print("failed to unpack")
-    else:
-        print(f"unpacked: {value!r}")
-
-
-def main():
-    test(5, T=uint32_type)
-    print()
-    test([1, 2, 3, 4, 5], T=list_type.of(float_type))
-    print()
-    test([-1, 1, -2, 2, -3, 3, -4, 4], T=list_type.of(int8_type))
-    print()
-    test("hello world")
-
-
-if __name__ == "__main__":
-    main()
