@@ -12,7 +12,7 @@ clean:
 test: cpp
 	@./a.out
 	@# see: https://stackoverflow.com/a/77321590
-	@$(PY) -m py.test
+	@$(PY) -m pytest -v
 	@echo "all tests passed"
 
 update:

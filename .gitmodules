@@ -4,3 +4,6 @@
 [submodule "py/py_utils"]
 	path = py/py_utils
 	url = git@github.com:hljeong/py_utils.git
+[submodule "py/pack/py_utils"]
+	path = py/pack/py_utils
+	url = git@github.com:hljeong/py_utils.git
