@@ -9,7 +9,7 @@ all: test
 clean:
 	rm -rf a.out
 
-test: cpp
+test: cpp py
 	@./a.out
 	@# see: https://stackoverflow.com/a/77321590
 	@$(PY) -m pytest -v
@@ -21,4 +21,4 @@ update:
 cpp: cpp/pack.h cpp/test.cc
 	@$(CC) cpp/test.cc
 
-py: py/pack.py py/test.py
+py: py/pack/pack.py py/test_pack.py
