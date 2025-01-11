@@ -1,7 +1,7 @@
 import copy
 import struct
 
-from py_utils.dicts.dicts import EqDict, IdDict
+from .py_utils.dicts import EqDict, IdDict
 
 # todo: type annotations?
 # todo: unpack<T>() and unpack<(T1, T2)>() syntax?

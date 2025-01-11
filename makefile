@@ -11,7 +11,8 @@ clean:
 
 test: cpp
 	@./a.out
-	@$(PY) py/test.py
+	@# see: https://stackoverflow.com/a/77321590
+	@$(PY) -m py.test
 	@echo "all tests passed"
 
 update:

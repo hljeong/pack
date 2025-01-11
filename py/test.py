@@ -1,6 +1,6 @@
 # todo: use pytest?
 
-from pack import (
+from .pack import (
     Nullopt,
     resolve_type,
     pack_one,
