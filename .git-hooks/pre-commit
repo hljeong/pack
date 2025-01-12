@@ -1,0 +1,6 @@
+#!/usr/bin/env -S bash -xe
+
+
+make test
+make venv-list-deps
+git add requirements.txt

@@ -1,4 +1,4 @@
-from pack.py_utils.test import Parameters, parametrize
+from py_utils.test import Parameters, parametrize
 
 from pack.pack import (
     Nullopt,

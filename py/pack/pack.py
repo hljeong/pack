@@ -1,10 +1,9 @@
 import copy
 import struct
 
-from .py_utils.dicts import EqDict, IdDict
+from py_utils.dicts import EqDict, IdDict
 
 # todo: type annotations?
-# todo: unpack<T>() and unpack<(T1, T2)>() syntax?
 
 
 # todo: flesh this out, see pep 661
@@ -498,7 +497,6 @@ class list_type:
     _cache = dict()
 
     # todo: __getitem__ would be nice
-    # todo: maybe even <T> syntax
     @staticmethod
     def of(elem_type):
         if elem_type not in list_type._cache:
@@ -574,7 +572,6 @@ class optional_type:
     _cache = dict()
 
     # todo: __getitem__ would be nice
-    # todo: maybe even <T> syntax
     @staticmethod
     def of(elem_type):
         if elem_type not in optional_type._cache:
@@ -624,7 +621,6 @@ class tuple_type:
     _cache = EqDict()
 
     # todo: __getitem__ would be nice
-    # todo: maybe even <T> syntax
     @staticmethod
     def of(*elem_types):
         if elem_types not in tuple_type._cache:
