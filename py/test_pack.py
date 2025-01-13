@@ -5,29 +5,24 @@ from pack.pack import (
     resolve_type,
     pack_one,
     unpack_one,
-    UInt32Type,
-    Int8Type,
-    BoolType,
-    ListType,
-    StringType,
-    OptionalType,
-    TupleType,
+    UInt32,
+    Int8,
+    Bool,
+    List,
+    String,
+    Optional,
+    Tuple,
 )
 
 parameters = [
-    Parameters("uint32", 5, UInt32Type),
-    Parameters("list[int8]", [-1, 1, -2, 2, -3, 3, -4, 5], ListType.of(Int8Type)),
-    Parameters("string", "hello world", None),
-    Parameters("optional[uint32] = Nullopt", Nullopt, OptionalType.of(UInt32Type)),
+    Parameters("UInt32", 5, UInt32),
+    Parameters("List[Int8]", [-1, 1, -2, 2, -3, 3, -4, 5], List[Int8]),
+    Parameters("String", "hello world", None),
+    Parameters("Optional[UInt32] = Nullopt", Nullopt, Optional[UInt32]),
     Parameters(
-        "tuple",
+        "Tuple",
         ([-1, -2, 3, 4], Nullopt, "hi", 12),
-        TupleType.of(
-            ListType.of(Int8Type),
-            OptionalType.of(BoolType),
-            StringType,
-            UInt32Type,
-        ),
+        Tuple[List[Int8], Optional[Bool], String, UInt32],
     ),
 ]
 
@@ -38,12 +33,12 @@ def test_pack(value, T):
 
     print(f"input: {value!r}")
 
-    packed = pack_one(value, T=T)
+    packed = pack_one[T](value)
     print("packed:")
     packed.dump()
 
     try:
-        unpacked = unpack_one(T, packed)
+        unpacked = unpack_one[T](packed)
         print(f"unpacked: {value!r}")
         assert value == unpacked
     except Exception as e:
