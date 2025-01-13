@@ -3,10 +3,12 @@ from enum import Enum
 import struct
 
 from py_utils.dicts import EqDict, IdDict
+from py_utils.parametrize import parametrize, named_parametrize, Parametrized
 from py_utils.sentinel import Sentinel
 
 # todo: type annotations?
 # todo: add switch for untyped vs typed packing
+# todo: parametrized methods
 
 
 Unit = Sentinel("Unit")
@@ -48,7 +50,7 @@ def resolve_type(value):
         return _cached_type[value]
 
     elif isinstance(value, int):
-        return Int32Type
+        return Int32
 
     elif isinstance(value, bool):
         return Bool
@@ -72,6 +74,7 @@ def resolve_type(value):
     fail("not implemented")
 
 
+# todo: support UInt8(x) -> typed(x, T=UInt8)?
 def typed(value, T=None):
     value = copy.deepcopy(value)
     T = T or resolve_type(value)
@@ -238,19 +241,6 @@ class TypeInfo(Pack):
 
         else:
             raise ValueError(f"bad type info: {list(self.data)}")
-
-
-class ParametrizedMeta(type):
-    def __getitem__(cls, parameter):
-        return cls.of(parameter)
-
-    @staticmethod
-    def of(parameter):
-        raise NotImplementedError
-
-
-class Parametrized(metaclass=ParametrizedMeta):
-    pass
 
 
 class Type:
@@ -584,35 +574,6 @@ class Tuple(Parametrized):
             Tuple._cache[elem_types] = TupleInst
 
         return Tuple._cache[elem_types]
-
-
-import functools
-
-
-class ParametrizedFunc:
-    def __init__(self, func, parameter_name=None):
-        self.func = func
-        self.parameter_name = parameter_name
-
-    def __call__(self, *a, **kw):
-        return self.func(*a, **kw)
-
-    def __getitem__(self, parameter):
-        if self.parameter_name is None:
-            return functools.partial(self.func, parameter)
-        else:
-            return functools.partial(self.func, **{self.parameter_name: parameter})
-
-
-def parametrize(func):
-    return ParametrizedFunc(func)
-
-
-def named_parametrize(parameter_name):
-    def decorator(func):
-        return ParametrizedFunc(func, parameter_name=parameter_name)
-
-    return decorator
 
 
 @named_parametrize("T")
