@@ -1,4 +1,5 @@
 import copy
+from enum import Enum
 import struct
 
 from py_utils.dicts import EqDict, IdDict
@@ -13,7 +14,8 @@ Unit = Sentinel("Unit")
 Nullopt = Sentinel("Nullopt")
 
 
-class type_id:
+# todo: upper case these?
+class type_id(Enum):
     type_info_type = 0x01
     unit_type = 0x02
     uint8_type = 0x10
@@ -241,7 +243,7 @@ class TypeInfo(Pack):
 
 # todo: reduce boilerplate
 class type_info_type:
-    type_info = TypeInfo(type_id.type_info_type)
+    type_info = TypeInfo(type_id.type_info_type.value)
 
     @staticmethod
     def validate(value):
@@ -266,7 +268,7 @@ class type_info_type:
 
 
 class unit_type:
-    type_info = TypeInfo(type_id.unit_type)
+    type_info = TypeInfo(type_id.unit_type.value)
 
     @staticmethod
     def validate(value):
@@ -283,7 +285,7 @@ class unit_type:
 
 
 class uint8_type:
-    type_info = TypeInfo(type_id.uint8_type)
+    type_info = TypeInfo(type_id.uint8_type.value)
 
     @staticmethod
     def validate(value):
@@ -301,7 +303,7 @@ class uint8_type:
 
 
 class uint16_type:
-    type_info = TypeInfo(type_id.uint16_type)
+    type_info = TypeInfo(type_id.uint16_type.value)
 
     @staticmethod
     def validate(value):
@@ -319,7 +321,7 @@ class uint16_type:
 
 
 class uint32_type:
-    type_info = TypeInfo(type_id.uint32_type)
+    type_info = TypeInfo(type_id.uint32_type.value)
 
     @staticmethod
     def validate(value):
@@ -337,7 +339,7 @@ class uint32_type:
 
 
 class uint64_type:
-    type_info = TypeInfo(type_id.uint64_type)
+    type_info = TypeInfo(type_id.uint64_type.value)
 
     @staticmethod
     def validate(value):
@@ -355,7 +357,7 @@ class uint64_type:
 
 
 class int8_type:
-    type_info = TypeInfo(type_id.int8_type)
+    type_info = TypeInfo(type_id.int8_type.value)
 
     @staticmethod
     def validate(value):
@@ -373,7 +375,7 @@ class int8_type:
 
 
 class int16_type:
-    type_info = TypeInfo(type_id.int16_type)
+    type_info = TypeInfo(type_id.int16_type.value)
 
     @staticmethod
     def validate(value):
@@ -391,7 +393,7 @@ class int16_type:
 
 
 class int32_type:
-    type_info = TypeInfo(type_id.int32_type)
+    type_info = TypeInfo(type_id.int32_type.value)
 
     @staticmethod
     def validate(value):
@@ -409,7 +411,7 @@ class int32_type:
 
 
 class int64_type:
-    type_info = TypeInfo(type_id.int64_type)
+    type_info = TypeInfo(type_id.int64_type.value)
 
     @staticmethod
     def validate(value):
@@ -427,7 +429,7 @@ class int64_type:
 
 
 class float_type:
-    type_info = TypeInfo(type_id.float_type)
+    type_info = TypeInfo(type_id.float_type.value)
 
     # todo: possible to automate checking for castable types?
     @staticmethod
@@ -445,7 +447,7 @@ class float_type:
 
 
 class double_type:
-    type_info = TypeInfo(type_id.double_type)
+    type_info = TypeInfo(type_id.double_type.value)
 
     # todo: possible to automate checking for castable types?
     @staticmethod
@@ -463,7 +465,7 @@ class double_type:
 
 
 class bool_type:
-    type_info = TypeInfo(type_id.bool_type)
+    type_info = TypeInfo(type_id.bool_type.value)
 
     @staticmethod
     def validate(value):
@@ -488,7 +490,7 @@ class list_type:
         if elem_type not in list_type._cache:
 
             class list_type_inst:
-                type_info = TypeInfo(type_id.list_type, elem_type.type_info)
+                type_info = TypeInfo(type_id.list_type.value, elem_type.type_info)
 
                 @staticmethod
                 def validate(value):
@@ -519,7 +521,7 @@ class list_type:
 
 
 class string_type:
-    type_info = TypeInfo(type_id.string_type)
+    type_info = TypeInfo(type_id.string_type.value)
 
     @staticmethod
     def validate(value):
@@ -553,7 +555,7 @@ class optional_type:
         if elem_type not in optional_type._cache:
 
             class optional_type_inst:
-                type_info = TypeInfo(type_id.optional_type, elem_type.type_info)
+                type_info = TypeInfo(type_id.optional_type.value, elem_type.type_info)
 
                 @staticmethod
                 def validate(value):
@@ -596,7 +598,7 @@ class tuple_type:
 
             class tuple_type_inst:
                 type_info = TypeInfo(
-                    type_id.tuple_type,
+                    type_id.tuple_type.value,
                     list_type.of(type_info_type).pack(
                         list(elem_type.type_info for elem_type in elem_types)
                     ),
