@@ -18,24 +18,24 @@ namespace pack {
 
 class Unit : std::tuple<> {};
 
-enum type_id : uint8_t {
-  type_info_type = 0x01,
-  unit_type = 0x02,
-  uint8_type = 0x10,
-  uint16_type = 0x11,
-  uint32_type = 0x12,
-  uint64_type = 0x13,
-  int8_type = 0x18,
-  int16_type = 0x19,
-  int32_type = 0x1a,
-  int64_type = 0x1b,
-  float_type = 0x20,
-  double_type = 0x21,
-  bool_type = 0x30,
-  list_type = 0x40,
-  string_type = 0x41,
-  optional_type = 0x42,
-  tuple_type = 0x43,
+enum class TypeId : uint8_t {
+  TypeInfoType = 0x01,
+  UnitType = 0x02,
+  UInt8Type = 0x10,
+  UInt16Type = 0x11,
+  Uint32Type = 0x12,
+  Uint64Type = 0x13,
+  Int8Type = 0x18,
+  Int16Type = 0x19,
+  Int32Type = 0x1a,
+  Int64Type = 0x1b,
+  FloatType = 0x20,
+  DoubleType = 0x21,
+  BoolType = 0x30,
+  ListType = 0x40,
+  StringType = 0x41,
+  OptionalType = 0x42,
+  TupleType = 0x43,
 };
 
 using Bytes = std::vector<uint8_t>;
@@ -47,8 +47,13 @@ public:
   template <typename... Ts> Pack(Ts... comps) : Bytes() {
     (
         [&]() {
-          const Bytes comp_data{comps};
-          insert(end(), comp_data.begin(), comp_data.end());
+          // todo: not a pretty patch to get enum class to work
+          if constexpr (std::is_same_v<decltype(comps), TypeId>) {
+            push_back(static_cast<uint8_t>(comps));
+          } else {
+            const Bytes comp_data{comps};
+            insert(end(), comp_data.begin(), comp_data.end());
+          };
         }(),
         ...);
   }
@@ -86,19 +91,19 @@ template <typename T> Pack pack_bits(const T &value) {
   return Pack(Bytes(value_ptr, value_ptr + sizeof(T)));
 }
 
-template <typename T> struct type {
+template <typename T> struct Type {
   static const TypeInfo type_info;
   // Directly pack and unpack the bit representation by default
   // This necessarily needs to be specialized for complex types
   inline static auto pack(const T &value) { return pack_bits(value); }
   inline static auto unpack(Unpacker &up) { return unpack_bits<T>(up); }
 };
-template <typename T> const TypeInfo type_info = type<T>::type_info;
+template <typename T> const TypeInfo type_info = Type<T>::type_info;
 
 class Packer {
 public:
   template <typename T> Packer &pack(const T &value) {
-    push(type<T>::pack(value));
+    push(Type<T>::pack(value));
     return *this;
   }
 
@@ -146,7 +151,7 @@ public:
 
   Unpacker(const Bytes &data) : m_data(data) {};
 
-  template <typename T> T unpack() { return type<T>::unpack(*this); }
+  template <typename T> T unpack() { return Type<T>::unpack(*this); }
 
   template <typename T> T unpack_typed() {
     // todo: type name
@@ -202,8 +207,8 @@ template <typename T> T unpack_bits(Unpacker &up) {
   return value;
 }
 
-template <> struct type<TypeInfo> {
-  inline static const TypeInfo type_info = {type_info_type};
+template <> struct Type<TypeInfo> {
+  inline static const TypeInfo type_info = {TypeId::TypeInfoType};
 
   static Pack pack(const TypeInfo &value) {
     Packer p;
@@ -229,39 +234,47 @@ template <> struct type<TypeInfo> {
   }
 };
 
-template <> struct type<Unit> {
-  inline static const TypeInfo type_info = {unit_type};
+template <> struct Type<Unit> {
+  inline static const TypeInfo type_info = {TypeId::UnitType};
 
   static Pack pack(const Unit &value) { return {}; }
 
   static Unit unpack(Unpacker &up) { return {}; }
 };
 
-template <> inline const TypeInfo type<uint8_t>::type_info = {uint8_type};
+template <>
+inline const TypeInfo Type<uint8_t>::type_info = {TypeId::UInt8Type};
 
-template <> inline const TypeInfo type<uint16_t>::type_info = {uint16_type};
+template <>
+inline const TypeInfo Type<uint16_t>::type_info = {TypeId::UInt16Type};
 
-template <> inline const TypeInfo type<uint32_t>::type_info = {uint32_type};
+template <>
+inline const TypeInfo Type<uint32_t>::type_info = {TypeId::Uint32Type};
 
-template <> inline const TypeInfo type<uint64_t>::type_info = {uint64_type};
+template <>
+inline const TypeInfo Type<uint64_t>::type_info = {TypeId::Uint64Type};
 
-template <> inline const TypeInfo type<int8_t>::type_info = {int8_type};
+template <> inline const TypeInfo Type<int8_t>::type_info = {TypeId::Int8Type};
 
-template <> inline const TypeInfo type<int16_t>::type_info = {int16_type};
+template <>
+inline const TypeInfo Type<int16_t>::type_info = {TypeId::Int16Type};
 
-template <> inline const TypeInfo type<int32_t>::type_info = {int32_type};
+template <>
+inline const TypeInfo Type<int32_t>::type_info = {TypeId::Int32Type};
 
-template <> inline const TypeInfo type<int64_t>::type_info = {int64_type};
+template <>
+inline const TypeInfo Type<int64_t>::type_info = {TypeId::Int64Type};
 
-template <> inline const TypeInfo type<float>::type_info = {float_type};
+template <> inline const TypeInfo Type<float>::type_info = {TypeId::FloatType};
 
-template <> inline const TypeInfo type<double>::type_info = {double_type};
+template <>
+inline const TypeInfo Type<double>::type_info = {TypeId::DoubleType};
 
-template <> inline const TypeInfo type<bool>::type_info = {bool_type};
+template <> inline const TypeInfo Type<bool>::type_info = {TypeId::BoolType};
 
-template <typename T> struct type<std::vector<T>> {
+template <typename T> struct Type<std::vector<T>> {
   inline static const TypeInfo type_info =
-      TypeInfo(list_type, pack::type_info<T>);
+      TypeInfo(TypeId::ListType, pack::type_info<T>);
 
   static Pack pack(const std::vector<T> &value) {
     Packer p;
@@ -287,8 +300,8 @@ template <typename T> struct type<std::vector<T>> {
   }
 };
 
-template <> struct type<std::string> {
-  inline static const TypeInfo type_info = {string_type};
+template <> struct Type<std::string> {
+  inline static const TypeInfo type_info = {TypeId::StringType};
 
   static Pack pack(const std::string &value) {
     Packer p;
@@ -314,9 +327,9 @@ template <> struct type<std::string> {
   }
 };
 
-template <typename T> struct type<std::optional<T>> {
+template <typename T> struct Type<std::optional<T>> {
   inline static const TypeInfo type_info =
-      TypeInfo(optional_type, pack::type_info<T>);
+      TypeInfo(TypeId::OptionalType, pack::type_info<T>);
 
   static Pack pack(const std::optional<T> &value) {
     Packer p;
@@ -341,9 +354,10 @@ template <typename T> struct type<std::optional<T>> {
   }
 };
 
-template <typename... Ts> struct type<std::tuple<Ts...>> {
-  inline static const TypeInfo type_info = TypeInfo(
-      tuple_type, type<std::vector<TypeInfo>>::pack({pack::type_info<Ts>...}));
+template <typename... Ts> struct Type<std::tuple<Ts...>> {
+  inline static const TypeInfo type_info =
+      TypeInfo(TypeId::TupleType,
+               Type<std::vector<TypeInfo>>::pack({pack::type_info<Ts>...}));
 
   static Pack pack(const std::tuple<Ts...> &value) {
     Packer p;
@@ -375,7 +389,7 @@ template <typename T> inline static T unpack_one(const Bytes &data) {
 template <typename... Ts>
 inline static std::tuple<Ts...> unpack(const Bytes &data) {
   Unpacker up(data);
-  return type<std::tuple<Ts...>>::unpack(up);
+  return Type<std::tuple<Ts...>>::unpack(up);
 }
 
 }; // namespace pack

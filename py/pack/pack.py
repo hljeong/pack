@@ -15,24 +15,24 @@ Nullopt = Sentinel("Nullopt")
 
 
 # todo: upper case these?
-class type_id(Enum):
-    type_info_type = 0x01
-    unit_type = 0x02
-    uint8_type = 0x10
-    uint16_type = 0x11
-    uint32_type = 0x12
-    uint64_type = 0x13
-    int8_type = 0x18
-    int16_type = 0x19
-    int32_type = 0x1A
-    int64_type = 0x1B
-    float_type = 0x20
-    double_type = 0x21
-    bool_type = 0x30
-    list_type = 0x40
-    string_type = 0x41
-    optional_type = 0x42
-    tuple_type = 0x43
+class TypeId(Enum):
+    TypeInfo = 0x01
+    Unit = 0x02
+    UInt8 = 0x10
+    UInt16 = 0x11
+    UInt32 = 0x12
+    UInt64 = 0x13
+    Int8 = 0x18
+    Int16 = 0x19
+    Int32 = 0x1A
+    Int64 = 0x1B
+    Float = 0x20
+    Double = 0x21
+    Bool = 0x30
+    List = 0x40
+    String = 0x41
+    Optional = 0x42
+    Tuple = 0x43
 
 
 _cached_type = IdDict()
@@ -49,10 +49,10 @@ def resolve_type(value):
         return _cached_type[value]
 
     elif isinstance(value, int):
-        return int32_type
+        return Int32Type
 
     elif isinstance(value, bool):
-        return bool_type
+        return BoolType
 
     elif isinstance(value, list):
         if len(value) == 0:
@@ -63,10 +63,10 @@ def resolve_type(value):
         if any(resolve_type(elem) is not elem_type for elem in value):
             fail("not all elements have the same type")
 
-        return list_type.of(elem_type)
+        return ListType.of(elem_type)
 
     elif isinstance(value, str):
-        return string_type
+        return StringType
 
     # todo: optional, tuple
 
@@ -179,59 +179,59 @@ class TypeInfo(Pack):
     @property
     def T(self):
         if self.data[0] == 0x01:
-            return type_info_type
+            return TypeInfoType
 
         elif self.data[0] == 0x02:
-            return unit_type
+            return UnitType
 
         elif self.data[0] == 0x10:
-            return uint8_type
+            return UInt8Type
 
         elif self.data[0] == 0x11:
-            return uint16_type
+            return UInt16Type
 
         elif self.data[0] == 0x12:
-            return uint32_type
+            return UInt32Type
 
         elif self.data[0] == 0x13:
-            return uint64_type
+            return UInt64Type
 
         elif self.data[0] == 0x18:
-            return int8_type
+            return Int8Type
 
         elif self.data[0] == 0x19:
-            return int16_type
+            return Int16Type
 
         elif self.data[0] == 0x1A:
-            return int32_type
+            return Int32Type
 
         elif self.data[0] == 0x1B:
-            return int64_type
+            return Int64Type
 
         elif self.data[0] == 0x20:
-            return float_type
+            return FloatType
 
         elif self.data[0] == 0x20:
-            return double_type
+            return DoubleType
 
         elif self.data[0] == 0x30:
-            return bool_type
+            return BoolType
 
         elif self.data[0] == 0x40:
-            return list_type.of(TypeInfo(self.data[1:]).T)
+            return ListType.of(TypeInfo(self.data[1:]).T)
 
         elif self.data[0] == 0x41:
-            return string_type
+            return StringType
 
         elif self.data[0] == 0x42:
-            return optional_type.of(TypeInfo(self.data[1:]).T)
+            return OptionalType.of(TypeInfo(self.data[1:]).T)
 
         elif self.data[0] == 0x43:
             # todo: ugly
-            return tuple_type.of(
+            return TupleType.of(
                 *(
                     elem_type_info.T
-                    for elem_type_info in list_type.of(type_info_type).unpack(
+                    for elem_type_info in ListType.of(TypeInfoType).unpack(
                         Unpacker(self.data[1:])
                     )
                 )
@@ -242,8 +242,8 @@ class TypeInfo(Pack):
 
 
 # todo: reduce boilerplate
-class type_info_type:
-    type_info = TypeInfo(type_id.type_info_type.value)
+class TypeInfoType:
+    type_info = TypeInfo(TypeId.TypeInfo.value)
 
     @staticmethod
     def validate(value):
@@ -251,24 +251,24 @@ class type_info_type:
 
     @staticmethod
     def pack(value):
-        type_info_type.validate(value)
+        TypeInfoType.validate(value)
         p = Packer()
-        p.pack(len(value), T=uint8_type)
+        p.pack(len(value), T=UInt8Type)
         for byte in value:
-            p.pack(byte, T=uint8_type)
+            p.pack(byte, T=UInt8Type)
         return p.data
 
     @staticmethod
     def unpack(up):
         value = list()
-        n = up.unpack(T=uint8_type)
+        n = up.unpack(T=UInt8Type)
         for _ in range(n):
-            value.append(up.unpack(T=uint8_type))
+            value.append(up.unpack(T=UInt8Type))
         return TypeInfo(bytes(value))
 
 
-class unit_type:
-    type_info = TypeInfo(type_id.unit_type.value)
+class UnitType:
+    type_info = TypeInfo(TypeId.Unit.value)
 
     @staticmethod
     def validate(value):
@@ -276,7 +276,7 @@ class unit_type:
 
     @staticmethod
     def pack(value):
-        unit_type.validate(value)
+        UnitType.validate(value)
         return Pack()
 
     @staticmethod
@@ -284,8 +284,8 @@ class unit_type:
         return Unit
 
 
-class uint8_type:
-    type_info = TypeInfo(type_id.uint8_type.value)
+class UInt8Type:
+    type_info = TypeInfo(TypeId.UInt8.value)
 
     @staticmethod
     def validate(value):
@@ -294,7 +294,7 @@ class uint8_type:
 
     @staticmethod
     def pack(value):
-        uint8_type.validate(value)
+        UInt8Type.validate(value)
         return Pack(struct.pack("<B", value))
 
     @staticmethod
@@ -302,8 +302,8 @@ class uint8_type:
         return struct.unpack("<B", up.consume(1))[0]
 
 
-class uint16_type:
-    type_info = TypeInfo(type_id.uint16_type.value)
+class UInt16Type:
+    type_info = TypeInfo(TypeId.UInt16.value)
 
     @staticmethod
     def validate(value):
@@ -312,7 +312,7 @@ class uint16_type:
 
     @staticmethod
     def pack(value):
-        uint16_type.validate(value)
+        UInt16Type.validate(value)
         return Pack(struct.pack("<H", value))
 
     @staticmethod
@@ -320,8 +320,8 @@ class uint16_type:
         return struct.unpack("<H", up.consume(2))[0]
 
 
-class uint32_type:
-    type_info = TypeInfo(type_id.uint32_type.value)
+class UInt32Type:
+    type_info = TypeInfo(TypeId.UInt32.value)
 
     @staticmethod
     def validate(value):
@@ -330,7 +330,7 @@ class uint32_type:
 
     @staticmethod
     def pack(value):
-        uint32_type.validate(value)
+        UInt32Type.validate(value)
         return Pack(struct.pack("<I", value))
 
     @staticmethod
@@ -338,8 +338,8 @@ class uint32_type:
         return struct.unpack("<I", up.consume(4))[0]
 
 
-class uint64_type:
-    type_info = TypeInfo(type_id.uint64_type.value)
+class UInt64Type:
+    type_info = TypeInfo(TypeId.UInt64.value)
 
     @staticmethod
     def validate(value):
@@ -348,7 +348,7 @@ class uint64_type:
 
     @staticmethod
     def pack(value):
-        uint64_type.validate(value)
+        UInt64Type.validate(value)
         return Pack(struct.pack("<Q", value))
 
     @staticmethod
@@ -356,8 +356,8 @@ class uint64_type:
         return struct.unpack("<Q", up.consume(8))[0]
 
 
-class int8_type:
-    type_info = TypeInfo(type_id.int8_type.value)
+class Int8Type:
+    type_info = TypeInfo(TypeId.Int8.value)
 
     @staticmethod
     def validate(value):
@@ -366,7 +366,7 @@ class int8_type:
 
     @staticmethod
     def pack(value):
-        int8_type.validate(value)
+        Int8Type.validate(value)
         return Pack(struct.pack("<b", value))
 
     @staticmethod
@@ -374,8 +374,8 @@ class int8_type:
         return struct.unpack("<b", up.consume(1))[0]
 
 
-class int16_type:
-    type_info = TypeInfo(type_id.int16_type.value)
+class Int16Type:
+    type_info = TypeInfo(TypeId.Int16.value)
 
     @staticmethod
     def validate(value):
@@ -384,7 +384,7 @@ class int16_type:
 
     @staticmethod
     def pack(value):
-        int16_type.validate(value)
+        Int16Type.validate(value)
         return Pack(struct.pack("<h", value))
 
     @staticmethod
@@ -392,8 +392,8 @@ class int16_type:
         return struct.unpack("<h", up.consume(2))[0]
 
 
-class int32_type:
-    type_info = TypeInfo(type_id.int32_type.value)
+class Int32Type:
+    type_info = TypeInfo(TypeId.Int32.value)
 
     @staticmethod
     def validate(value):
@@ -402,7 +402,7 @@ class int32_type:
 
     @staticmethod
     def pack(value):
-        int32_type.validate(value)
+        Int32Type.validate(value)
         return Pack(struct.pack("<i", value))
 
     @staticmethod
@@ -410,8 +410,8 @@ class int32_type:
         return struct.unpack("<i", up.consume(4))[0]
 
 
-class int64_type:
-    type_info = TypeInfo(type_id.int64_type.value)
+class Int64Type:
+    type_info = TypeInfo(TypeId.Int64.value)
 
     @staticmethod
     def validate(value):
@@ -420,7 +420,7 @@ class int64_type:
 
     @staticmethod
     def pack(value):
-        int64_type.validate(value)
+        Int64Type.validate(value)
         return Pack(struct.pack("<q", value))
 
     @staticmethod
@@ -428,8 +428,8 @@ class int64_type:
         return struct.unpack("<q", up.consume(8))[0]
 
 
-class float_type:
-    type_info = TypeInfo(type_id.float_type.value)
+class FloatType:
+    type_info = TypeInfo(TypeId.Float.value)
 
     # todo: possible to automate checking for castable types?
     @staticmethod
@@ -438,7 +438,7 @@ class float_type:
 
     @staticmethod
     def pack(value):
-        float_type.validate(value)
+        FloatType.validate(value)
         return Pack(struct.pack("<f", value))
 
     @staticmethod
@@ -446,8 +446,8 @@ class float_type:
         return struct.unpack("<f", up.consume(4))[0]
 
 
-class double_type:
-    type_info = TypeInfo(type_id.double_type.value)
+class DoubleType:
+    type_info = TypeInfo(TypeId.Double.value)
 
     # todo: possible to automate checking for castable types?
     @staticmethod
@@ -456,7 +456,7 @@ class double_type:
 
     @staticmethod
     def pack(value):
-        double_type.validate(value)
+        DoubleType.validate(value)
         return Pack(struct.pack("<d", value))
 
     @staticmethod
@@ -464,8 +464,8 @@ class double_type:
         return struct.unpack("<d", up.consume(8))[0]
 
 
-class bool_type:
-    type_info = TypeInfo(type_id.bool_type.value)
+class BoolType:
+    type_info = TypeInfo(TypeId.Bool.value)
 
     @staticmethod
     def validate(value):
@@ -473,7 +473,7 @@ class bool_type:
 
     @staticmethod
     def pack(value):
-        bool_type.validate(value)
+        BoolType.validate(value)
         return Pack(1 if value else 0)
 
     @staticmethod
@@ -481,16 +481,17 @@ class bool_type:
         return bool(up.consume(1)[0])
 
 
-class list_type:
+class ListType:
+    # todo: should parametrized types use builtin dict?
     _cache = dict()
 
     # todo: __getitem__ would be nice
     @staticmethod
     def of(elem_type):
-        if elem_type not in list_type._cache:
+        if elem_type not in ListType._cache:
 
-            class list_type_inst:
-                type_info = TypeInfo(type_id.list_type.value, elem_type.type_info)
+            class ListTypeInst:
+                type_info = TypeInfo(TypeId.List.value, elem_type.type_info)
 
                 @staticmethod
                 def validate(value):
@@ -500,9 +501,9 @@ class list_type:
 
                 @staticmethod
                 def pack(value):
-                    list_type_inst.validate(value)
+                    ListTypeInst.validate(value)
                     p = Packer()
-                    p.pack(len(value), T=uint32_type)
+                    p.pack(len(value), T=UInt32Type)
                     for elem in value:
                         p.pack(elem, T=elem_type)
                     return p.data
@@ -510,18 +511,18 @@ class list_type:
                 @staticmethod
                 def unpack(up):
                     value = list()
-                    n = up.unpack(T=uint32_type)
+                    n = up.unpack(T=UInt32Type)
                     for _ in range(n):
                         value.append(up.unpack(T=elem_type))
                     return value
 
-            list_type._cache[elem_type] = list_type_inst
+            ListType._cache[elem_type] = ListTypeInst
 
-        return list_type._cache[elem_type]
+        return ListType._cache[elem_type]
 
 
-class string_type:
-    type_info = TypeInfo(type_id.string_type.value)
+class StringType:
+    type_info = TypeInfo(TypeId.String.value)
 
     @staticmethod
     def validate(value):
@@ -529,33 +530,33 @@ class string_type:
 
     @staticmethod
     def pack(value):
-        string_type.validate(value)
+        StringType.validate(value)
         p = Packer()
-        p.pack(len(value), T=uint32_type)
+        p.pack(len(value), T=UInt32Type)
         for ch in value:
-            p.pack(ord(ch), T=uint8_type)
+            p.pack(ord(ch), T=UInt8Type)
         return p.data
 
     @staticmethod
     def unpack(up):
         # todo: use StringIO for efficiency
         value = ""
-        n = up.unpack(T=uint32_type)
+        n = up.unpack(T=UInt32Type)
         for _ in range(n):
-            value += chr(up.unpack(T=uint8_type))
+            value += chr(up.unpack(T=UInt8Type))
         return value
 
 
-class optional_type:
+class OptionalType:
     _cache = dict()
 
     # todo: __getitem__ would be nice
     @staticmethod
     def of(elem_type):
-        if elem_type not in optional_type._cache:
+        if elem_type not in OptionalType._cache:
 
-            class optional_type_inst:
-                type_info = TypeInfo(type_id.optional_type.value, elem_type.type_info)
+            class OptionalTypeInst:
+                type_info = TypeInfo(TypeId.Optional.value, elem_type.type_info)
 
                 @staticmethod
                 def validate(value):
@@ -563,11 +564,11 @@ class optional_type:
 
                 @staticmethod
                 def pack(value):
-                    optional_type_inst.validate(value)
+                    OptionalTypeInst.validate(value)
 
                     p = Packer()
 
-                    p.pack(value is not Nullopt, T=bool_type)
+                    p.pack(value is not Nullopt, T=BoolType)
 
                     if value is not Nullopt:
                         p.pack(value, T=elem_type)
@@ -576,30 +577,30 @@ class optional_type:
 
                 @staticmethod
                 def unpack(up):
-                    exists = up.unpack(T=bool_type)
+                    exists = up.unpack(T=BoolType)
 
                     if not exists:
                         return Nullopt
 
                     return up.unpack(T=elem_type)
 
-            optional_type._cache[elem_type] = optional_type_inst
+            OptionalType._cache[elem_type] = OptionalTypeInst
 
-        return optional_type._cache[elem_type]
+        return OptionalType._cache[elem_type]
 
 
-class tuple_type:
+class TupleType:
     _cache = EqDict()
 
     # todo: __getitem__ would be nice
     @staticmethod
     def of(*elem_types):
-        if elem_types not in tuple_type._cache:
+        if elem_types not in TupleType._cache:
 
-            class tuple_type_inst:
+            class TupleTypeInst:
                 type_info = TypeInfo(
-                    type_id.tuple_type.value,
-                    list_type.of(type_info_type).pack(
+                    TypeId.Tuple.value,
+                    ListType.of(TypeInfoType).pack(
                         list(elem_type.type_info for elem_type in elem_types)
                     ),
                 )
@@ -613,7 +614,7 @@ class tuple_type:
 
                 @staticmethod
                 def pack(value):
-                    tuple_type_inst.validate(value)
+                    TupleTypeInst.validate(value)
 
                     p = Packer()
 
@@ -626,9 +627,9 @@ class tuple_type:
                 def unpack(up):
                     return tuple(up.unpack(T=elem_type) for elem_type in elem_types)
 
-            tuple_type._cache[elem_types] = tuple_type_inst
+            TupleType._cache[elem_types] = TupleTypeInst
 
-        return tuple_type._cache[elem_types]
+        return TupleType._cache[elem_types]
 
 
 def pack_one(value, T=None):
@@ -650,4 +651,4 @@ def unpack(Ts, data):
     if not isinstance(Ts, tuple):
         Ts = (Ts,)
     up = Unpacker(data)
-    return tuple_type.of(*Ts).unpack(up)
+    return TupleType.of(*Ts).unpack(up)

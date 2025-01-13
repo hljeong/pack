@@ -5,28 +5,28 @@ from pack.pack import (
     resolve_type,
     pack_one,
     unpack_one,
-    uint32_type,
-    int8_type,
-    bool_type,
-    list_type,
-    string_type,
-    optional_type,
-    tuple_type,
+    UInt32Type,
+    Int8Type,
+    BoolType,
+    ListType,
+    StringType,
+    OptionalType,
+    TupleType,
 )
 
 parameters = [
-    Parameters("uint32", 5, uint32_type),
-    Parameters("list[int8]", [-1, 1, -2, 2, -3, 3, -4, 5], list_type.of(int8_type)),
+    Parameters("uint32", 5, UInt32Type),
+    Parameters("list[int8]", [-1, 1, -2, 2, -3, 3, -4, 5], ListType.of(Int8Type)),
     Parameters("string", "hello world", None),
-    Parameters("optional[uint32] = Nullopt", Nullopt, optional_type.of(uint32_type)),
+    Parameters("optional[uint32] = Nullopt", Nullopt, OptionalType.of(UInt32Type)),
     Parameters(
         "tuple",
         ([-1, -2, 3, 4], Nullopt, "hi", 12),
-        tuple_type.of(
-            list_type.of(int8_type),
-            optional_type.of(bool_type),
-            string_type,
-            uint32_type,
+        TupleType.of(
+            ListType.of(Int8Type),
+            OptionalType.of(BoolType),
+            StringType,
+            UInt32Type,
         ),
     ),
 ]
