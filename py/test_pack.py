@@ -42,10 +42,10 @@ def test_pack(value, T):
     print("packed:")
     packed.dump()
 
-    unpacked = unpack_one(T, packed)
-    if unpacked is None:
-        print("failed to unpack")
-    else:
+    try:
+        unpacked = unpack_one(T, packed)
         print(f"unpacked: {value!r}")
-
-    assert value == unpacked
+        assert value == unpacked
+    except Exception as e:
+        print(f"failed to unpack: {e}")
+        assert False, f"failed to unpack: {e}"

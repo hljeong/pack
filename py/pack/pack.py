@@ -133,31 +133,38 @@ class Packer:
 
 
 class Unpacker:
+    class NotEnoughDataError(Exception):
+        pass
+
+    class BadDataTypeError(Exception):
+        pass
+
     def __init__(self, data):
         self.data = Pack(data)
         self.idx = 0
 
     def consume(self, n):
         if self.idx + n > len(self.data):
-            # todo: better errors
-            raise RuntimeError(
-                f"expecting {n} bytes, only {len(self.data) - self.idx} available"
+            raise Unpacker.NotEnoughDataError(
+                f"expecting {n} byte(s), only {len(self.data) - self.idx} available"
             )
         data = self.data[self.idx : self.idx + n]
         self.idx += n
         return data
 
-    def _expect(self, expected):
-        data = self.consume(len(expected))
-        return data == expected
-
     def unpack(self, T):
         return T.unpack(self)
 
     def unpack_typed(self, T):
-        if not self._expect(T.type_info):
-            # todo: better errors, this message is especially bad
-            raise RuntimeError(f"expecting {T} type")
+        # todo: type name
+        type_data = self.consume(len(T.type_info))
+        if type_data != T.type_info:
+            to_str = lambda data_bytes: " ".join(
+                map(lambda byte: f"{byte:02x}", data_bytes)
+            )
+            raise Unpacker.BadDataTypeError(
+                f"expecting type info {to_str(type_data)}, got {to_str(T.type_info)}"
+            )
         return self.unpack(T)
 
 

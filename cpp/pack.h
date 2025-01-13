@@ -121,14 +121,51 @@ private:
 
 class Unpacker {
 public:
+  class NotEnoughDataError : public std::exception,
+                             public std::nested_exception {
+  public:
+    explicit NotEnoughDataError(const std::string &message)
+        : m_message(message) {}
+
+    const char *what() const noexcept override { return m_message.c_str(); };
+
+  private:
+    std::string m_message;
+  };
+
+  class BadDataTypeError : public std::exception {
+  public:
+    explicit BadDataTypeError(const std::string &message)
+        : m_message(message) {}
+
+    const char *what() const noexcept override { return m_message.c_str(); };
+
+  private:
+    std::string m_message;
+  };
+
   Unpacker(const Bytes &data) : m_data(data) {};
 
   template <typename T> T unpack() { return type<T>::unpack(*this); }
 
   template <typename T> T unpack_typed() {
-    if (!expect(type_info<T>)) {
-      // todo: better errors, this message is especially bad
-      throw std::runtime_error(std::string("expecting todo:(T) type"));
+    // todo: type name
+    const Bytes &type_data = consume(type_info<T>.size());
+    if (type_data != type_info<T>) {
+      std::stringstream s;
+      s << "expecting type info ";
+      for (const auto byte : type_info<T>) {
+        char buf[3];
+        snprintf(buf, 3, "%02x", byte);
+        s << buf;
+      }
+      s << ", got ";
+      for (const auto byte : type_info<T>) {
+        char buf[3];
+        snprintf(buf, 3, "%02x", byte);
+        s << buf;
+      }
+      throw BadDataTypeError(s.str());
     }
     return unpack<T>();
   }
@@ -136,10 +173,10 @@ public:
   // todo: can this be private?
   Pack consume(std::size_t n) {
     if (m_idx + n > m_data.size()) {
-      // todo: better errors
-      throw std::runtime_error(
-          std::string("expecting todo:(n) bytes, only todo:(m_data.size() - "
-                      "m_idx) available"));
+      std::stringstream s;
+      s << "expecting " << std::to_string(n) << " byte(s), only "
+        << std::to_string(m_data.size() - m_idx) << " available";
+      throw std::runtime_error(s.str());
     }
     const Pack data(Bytes(m_data.begin() + m_idx, m_data.begin() + m_idx + n));
     m_idx += n;
@@ -150,10 +187,6 @@ public:
   Pack consume() { return consume(m_data.size() - m_idx); }
 
 private:
-  bool expect(const Bytes &expected) {
-    return consume(expected.size()) == expected;
-  }
-
   Pack m_data;
   uint32_t m_idx = 0;
 };
