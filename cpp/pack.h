@@ -14,6 +14,7 @@
 namespace pack {
 
 // todo: add logger hook?
+// todo: add switch for untyped vs typed packing
 
 class Unit : std::tuple<> {};
 
@@ -69,7 +70,7 @@ public:
 
 // forward declarations
 class Unpacker;
-template <typename T> std::optional<T> unpack_bits(Unpacker &up);
+template <typename T> T unpack_bits(Unpacker &up);
 
 class TypeInfo : public Pack {
 public:
@@ -96,15 +97,14 @@ template <typename T> const TypeInfo type_info = type<T>::type_info;
 
 class Packer {
 public:
-  // todo: pack_value() to be default pack(), add pack_type()
-  template <typename T> Packer &pack_value(const T &value) {
+  template <typename T> Packer &pack(const T &value) {
     push(type<T>::pack(value));
     return *this;
   }
 
-  template <typename T> Packer &pack(const T &value) {
+  template <typename T> Packer &pack_typed(const T &value) {
     push(type_info<T>);
-    pack_value(value);
+    pack(value);
     return *this;
   }
 
@@ -123,19 +123,23 @@ class Unpacker {
 public:
   Unpacker(const Bytes &data) : m_data(data) {};
 
-  // todo: see comment about pack_value() above
-  template <typename T> std::optional<T> unpack_value() {
-    return type<T>::unpack(*this);
-  }
+  template <typename T> T unpack() { return type<T>::unpack(*this); }
 
-  template <typename T> std::optional<T> unpack() {
-    return expect(type_info<T>) ? unpack_value<T>() : std::nullopt;
+  template <typename T> T unpack_typed() {
+    if (!expect(type_info<T>)) {
+      // todo: better errors, this message is especially bad
+      throw std::runtime_error(std::string("expecting todo:(T) type"));
+    }
+    return unpack<T>();
   }
 
   // todo: can this be private?
-  std::optional<Pack> consume(std::size_t n) {
+  Pack consume(std::size_t n) {
     if (m_idx + n > m_data.size()) {
-      return std::nullopt;
+      // todo: better errors
+      throw std::runtime_error(
+          std::string("expecting todo:(n) bytes, only todo:(m_data.size() - "
+                      "m_idx) available"));
     }
     const Pack data(Bytes(m_data.begin() + m_idx, m_data.begin() + m_idx + n));
     m_idx += n;
@@ -143,7 +147,7 @@ public:
   }
 
   // todo: is this needed?
-  Pack consume() { return *consume(m_data.size() - m_idx); }
+  Pack consume() { return consume(m_data.size() - m_idx); }
 
 private:
   bool expect(const Bytes &expected) {
@@ -154,15 +158,12 @@ private:
   uint32_t m_idx = 0;
 };
 
-template <typename T> std::optional<T> unpack_bits(Unpacker &up) {
-  const auto data_opt = up.consume(sizeof(T));
-  if (!data_opt) {
-    return std::nullopt;
-  }
+template <typename T> T unpack_bits(Unpacker &up) {
+  const auto data = up.consume(sizeof(T));
 
   T value{};
   for (uint32_t i = 0; i < sizeof(T); ++i) {
-    *(reinterpret_cast<uint8_t *>(&value) + i) = (*data_opt)[i];
+    *(reinterpret_cast<uint8_t *>(&value) + i) = data[i];
   }
 
   return value;
@@ -174,29 +175,21 @@ template <> struct type<TypeInfo> {
   static Pack pack(const TypeInfo &value) {
     Packer p;
 
-    p.pack_value<uint8_t>(value.size());
+    p.pack<uint8_t>(value.size());
 
     for (const auto &byte : value) {
-      p.pack_value(byte);
+      p.pack(byte);
     }
 
     return *p;
   }
 
-  static std::optional<TypeInfo> unpack(Unpacker &up) {
-    const auto n_opt = up.unpack_value<uint8_t>();
-    if (!n_opt) {
-      return std::nullopt;
-    }
+  static TypeInfo unpack(Unpacker &up) {
+    const auto n = up.unpack<uint8_t>();
 
     TypeInfo value;
-    for (uint8_t i = 0; i < *n_opt; ++i) {
-      const auto byte_opt = up.unpack_value<uint8_t>();
-      if (!byte_opt) {
-        return std::nullopt;
-      }
-
-      value.push_back(*byte_opt);
+    for (uint8_t i = 0; i < n; ++i) {
+      value.push_back(up.unpack<uint8_t>());
     }
 
     return value;
@@ -240,29 +233,21 @@ template <typename T> struct type<std::vector<T>> {
   static Pack pack(const std::vector<T> &value) {
     Packer p;
 
-    p.pack_value<uint32_t>(value.size());
+    p.pack<uint32_t>(value.size());
 
     for (const auto &elem : value) {
-      p.pack_value(elem);
+      p.pack(elem);
     }
 
     return *p;
   }
 
-  static std::optional<std::vector<T>> unpack(Unpacker &up) {
-    const auto n_opt = up.unpack_value<uint32_t>();
-    if (!n_opt) {
-      return std::nullopt;
-    }
+  static std::vector<T> unpack(Unpacker &up) {
+    const auto n = up.unpack<uint32_t>();
 
     std::vector<T> value;
-    for (uint32_t i = 0; i < *n_opt; ++i) {
-      const auto elem_opt = up.unpack_value<T>();
-      if (!elem_opt) {
-        return std::nullopt;
-      }
-
-      value.push_back(*elem_opt);
+    for (uint32_t i = 0; i < n; ++i) {
+      value.push_back(up.unpack<T>());
     }
 
     return value;
@@ -275,29 +260,21 @@ template <> struct type<std::string> {
   static Pack pack(const std::string &value) {
     Packer p;
 
-    p.pack_value<uint32_t>(value.size());
+    p.pack<uint32_t>(value.size());
 
     for (const auto &ch : value) {
-      p.pack_value<uint8_t>(ch);
+      p.pack<uint8_t>(ch);
     }
 
     return *p;
   }
 
-  static std::optional<std::string> unpack(Unpacker &up) {
-    const auto n_opt = up.unpack_value<uint32_t>();
-    if (!n_opt) {
-      return std::nullopt;
-    }
+  static std::string unpack(Unpacker &up) {
+    const auto n = up.unpack<uint32_t>();
 
     std::stringstream value;
-    for (uint32_t i = 0; i < *n_opt; ++i) {
-      const auto ch_opt = up.unpack_value<uint8_t>();
-      if (!ch_opt) {
-        return std::nullopt;
-      }
-
-      value << static_cast<char>(*ch_opt);
+    for (uint32_t i = 0; i < n; ++i) {
+      value << static_cast<char>(up.unpack<uint8_t>());
     }
 
     return value.str();
@@ -311,31 +288,23 @@ template <typename T> struct type<std::optional<T>> {
   static Pack pack(const std::optional<T> &value) {
     Packer p;
 
-    p.pack_value(!!value);
+    p.pack(!!value);
 
     if (value) {
-      p.pack_value(*value);
+      p.pack(*value);
     }
 
     return *p;
   }
 
-  static std::optional<std::optional<T>> unpack(Unpacker &up) {
-    const auto exists_opt = up.unpack_value<bool>();
-    if (!exists_opt) {
-      return std::nullopt;
+  static std::optional<T> unpack(Unpacker &up) {
+    const auto exists = up.unpack<bool>();
+
+    if (!exists) {
+      return std::optional<T>(std::nullopt);
     }
 
-    if (!*exists_opt) {
-      return std::make_optional(std::optional<T>(std::nullopt));
-    }
-
-    const auto value_opt = up.unpack_value<T>();
-    if (!value_opt) {
-      return std::nullopt;
-    }
-
-    return *value_opt;
+    return up.unpack<T>();
   }
 };
 
@@ -346,23 +315,12 @@ template <typename... Ts> struct type<std::tuple<Ts...>> {
   static Pack pack(const std::tuple<Ts...> &value) {
     Packer p;
 
-    std::apply([&](const Ts &...value_) { (p.pack_value<Ts>(value_), ...); },
-               value);
+    std::apply([&](const Ts &...value_) { (p.pack<Ts>(value_), ...); }, value);
 
     return *p;
   }
 
-  static std::optional<std::tuple<Ts...>> unpack(Unpacker &up) {
-    // todo: this is the same as pack::unpack()...
-    const std::tuple<std::optional<Ts>...> value_opts = {
-        up.unpack_value<Ts>()...};
-    const auto disjunct = [](const std::optional<Ts> &...value_opts_) {
-      return (!value_opts_ || ...)
-                 ? std::nullopt
-                 : std::make_optional(std::make_tuple(*value_opts_...));
-    };
-    return std::apply(disjunct, value_opts);
-  }
+  static std::tuple<Ts...> unpack(Unpacker &up) { return {up.unpack<Ts>()...}; }
 };
 
 template <typename T> inline static Pack pack_one(const T &value) {
@@ -377,21 +335,14 @@ template <typename... Ts> inline static Pack pack(const Ts &...values) {
   return *p;
 }
 
-template <typename T>
-inline static std::optional<T> unpack_one(const Bytes &data) {
+template <typename T> inline static T unpack_one(const Bytes &data) {
   return Unpacker(data).unpack<T>();
 }
 
 template <typename... Ts>
-inline static std::optional<std::tuple<Ts...>> unpack(const Bytes &data) {
+inline static std::tuple<Ts...> unpack(const Bytes &data) {
   Unpacker up(data);
-  const std::tuple<std::optional<Ts>...> value_opts = {up.unpack<Ts>()...};
-  const auto disjunct = [](const std::optional<Ts> &...value_opts) {
-    return (!value_opts || ...)
-               ? std::nullopt
-               : std::make_optional(std::make_tuple(*value_opts...));
-  };
-  return std::apply(disjunct, value_opts);
+  return type<std::tuple<Ts...>>::unpack(up);
 }
 
 }; // namespace pack

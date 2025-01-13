@@ -11,14 +11,14 @@ template <typename T> void test(const T &value) {
   printf("packed:\n");
   packed.dump();
 
-  const auto unpacked = pack::unpack_one<T>(packed);
-  if (!unpacked)
-    printf("failed to unpack\n");
-  else {
-    printf("unpacked: %s\n", fmt::repr(*unpacked).c_str());
+  try {
+    const auto unpacked = pack::unpack_one<T>(packed);
+    printf("unpacked: %s\n", fmt::repr(unpacked).c_str());
+    assert(value == unpacked);
+  } catch (const std::runtime_error &e) {
+    printf("failed to unpack: %s\n", e.what());
+    assert(false);
   }
-
-  assert(value == *unpacked);
 }
 
 int main() {

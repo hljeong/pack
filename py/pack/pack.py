@@ -2,21 +2,10 @@ import copy
 import struct
 
 from py_utils.dicts import EqDict, IdDict
+from py_utils.sentinel import Sentinel
 
 # todo: type annotations?
-
-
-# todo: flesh this out, see pep 661
-class Sentinel:
-    _sentinels = dict()
-
-    def __new__(cls, name):
-        sentinel = super().__new__(cls)
-        sentinel._repr = name  # type: ignore
-        return Sentinel._sentinels.setdefault(name, sentinel)
-
-    def __repr__(self):
-        return self._repr  # type: ignore
+# todo: add switch for untyped vs typed packing
 
 
 Unit = Sentinel("Unit")
@@ -129,17 +118,17 @@ class Packer:
     def _push(self, data):
         self.data += data
 
-    def pack_value(self, value, T=None):
+    def pack(self, value, T=None):
         T = T or resolve_type(value)
         assert T is not None
         self._push(T.pack(value))
         return self
 
-    def pack(self, value, T=None):
+    def pack_typed(self, value, T=None):
         T = T or resolve_type(value)
         assert T is not None
         self._push(T.type_info)
-        self.pack_value(value, T=T)
+        self.pack(value, T=T)
         return self
 
 
@@ -150,7 +139,10 @@ class Unpacker:
 
     def consume(self, n):
         if self.idx + n > len(self.data):
-            return None
+            # todo: better errors
+            raise RuntimeError(
+                f"expecting {n} bytes, only {len(self.data) - self.idx} available"
+            )
         data = self.data[self.idx : self.idx + n]
         self.idx += n
         return data
@@ -159,11 +151,14 @@ class Unpacker:
         data = self.consume(len(expected))
         return data == expected
 
-    def unpack_value(self, T):
+    def unpack(self, T):
         return T.unpack(self)
 
-    def unpack(self, T):
-        return self.unpack_value(T) if self._expect(T.type_info) else None
+    def unpack_typed(self, T):
+        if not self._expect(T.type_info):
+            # todo: better errors, this message is especially bad
+            raise RuntimeError(f"expecting {T} type")
+        return self.unpack(T)
 
 
 class TypeInfo(Pack):
@@ -249,22 +244,17 @@ class type_info_type:
     def pack(value):
         type_info_type.validate(value)
         p = Packer()
-        p.pack_value(len(value), T=uint8_type)
+        p.pack(len(value), T=uint8_type)
         for byte in value:
-            p.pack_value(byte, T=uint8_type)
+            p.pack(byte, T=uint8_type)
         return p.data
 
     @staticmethod
     def unpack(up):
         value = list()
-        n = up.unpack_value(T=uint8_type)
-        if n is None:
-            return None
+        n = up.unpack(T=uint8_type)
         for _ in range(n):
-            byte = up.unpack_value(T=uint8_type)
-            if byte is None:
-                return None
-            value.append(byte)
+            value.append(up.unpack(T=uint8_type))
         return TypeInfo(bytes(value))
 
 
@@ -300,8 +290,7 @@ class uint8_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(1)
-        return None if data is None else struct.unpack("<B", data)[0]
+        return struct.unpack("<B", up.consume(1))[0]
 
 
 class uint16_type:
@@ -319,8 +308,7 @@ class uint16_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(2)
-        return None if data is None else struct.unpack("<H", data)[0]
+        return struct.unpack("<H", up.consume(2))[0]
 
 
 class uint32_type:
@@ -338,8 +326,7 @@ class uint32_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(4)
-        return None if data is None else struct.unpack("<I", data)[0]
+        return struct.unpack("<I", up.consume(4))[0]
 
 
 class uint64_type:
@@ -357,8 +344,7 @@ class uint64_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(8)
-        return None if data is None else struct.unpack("<Q", data)[0]
+        return struct.unpack("<Q", up.consume(8))[0]
 
 
 class int8_type:
@@ -376,8 +362,7 @@ class int8_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(1)
-        return None if data is None else struct.unpack("<b", data)[0]
+        return struct.unpack("<b", up.consume(1))[0]
 
 
 class int16_type:
@@ -395,8 +380,7 @@ class int16_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(2)
-        return None if data is None else struct.unpack("<h", data)[0]
+        return struct.unpack("<h", up.consume(2))[0]
 
 
 class int32_type:
@@ -414,8 +398,7 @@ class int32_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(4)
-        return None if data is None else struct.unpack("<i", data)[0]
+        return struct.unpack("<i", up.consume(4))[0]
 
 
 class int64_type:
@@ -433,8 +416,7 @@ class int64_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(8)
-        return None if data is None else struct.unpack("<q", data)[0]
+        return struct.unpack("<q", up.consume(8))[0]
 
 
 class float_type:
@@ -452,8 +434,7 @@ class float_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(4)
-        return None if data is None else struct.unpack("<f", data)[0]
+        return struct.unpack("<f", up.consume(4))[0]
 
 
 class double_type:
@@ -471,8 +452,7 @@ class double_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(8)
-        return None if data is None else struct.unpack("<d", data)[0]
+        return struct.unpack("<d", up.consume(8))[0]
 
 
 class bool_type:
@@ -489,8 +469,7 @@ class bool_type:
 
     @staticmethod
     def unpack(up):
-        data = up.consume(1)
-        return None if data is None else bool(data[0])
+        return bool(up.consume(1)[0])
 
 
 class list_type:
@@ -514,22 +493,17 @@ class list_type:
                 def pack(value):
                     list_type_inst.validate(value)
                     p = Packer()
-                    p.pack_value(len(value), T=uint32_type)
+                    p.pack(len(value), T=uint32_type)
                     for elem in value:
-                        p.pack_value(elem, T=elem_type)
+                        p.pack(elem, T=elem_type)
                     return p.data
 
                 @staticmethod
                 def unpack(up):
                     value = list()
-                    n = up.unpack_value(T=uint32_type)
-                    if n is None:
-                        return None
+                    n = up.unpack(T=uint32_type)
                     for _ in range(n):
-                        elem = up.unpack_value(T=elem_type)
-                        if elem is None:
-                            return None
-                        value.append(elem)
+                        value.append(up.unpack(T=elem_type))
                     return value
 
             list_type._cache[elem_type] = list_type_inst
@@ -548,23 +522,18 @@ class string_type:
     def pack(value):
         string_type.validate(value)
         p = Packer()
-        p.pack_value(len(value), T=uint32_type)
+        p.pack(len(value), T=uint32_type)
         for ch in value:
-            p.pack_value(ord(ch), T=uint8_type)
+            p.pack(ord(ch), T=uint8_type)
         return p.data
 
     @staticmethod
     def unpack(up):
         # todo: use StringIO for efficiency
         value = ""
-        n = up.unpack_value(T=uint32_type)
-        if n is None:
-            return None
+        n = up.unpack(T=uint32_type)
         for _ in range(n):
-            ch = up.unpack_value(T=uint8_type)
-            if ch is None:
-                return None
-            value += chr(ch)
+            value += chr(up.unpack(T=uint8_type))
         return value
 
 
@@ -589,28 +558,21 @@ class optional_type:
 
                     p = Packer()
 
-                    p.pack_value(value is not Nullopt, T=bool_type)
+                    p.pack(value is not Nullopt, T=bool_type)
 
                     if value is not Nullopt:
-                        p.pack_value(value, T=elem_type)
+                        p.pack(value, T=elem_type)
 
                     return p.data
 
                 @staticmethod
                 def unpack(up):
-                    exists = up.unpack_value(T=bool_type)
-
-                    if exists is None:
-                        return None
+                    exists = up.unpack(T=bool_type)
 
                     if not exists:
                         return Nullopt
 
-                    value = up.unpack_value(T=elem_type)
-                    if value is None:
-                        return None
-
-                    return value
+                    return up.unpack(T=elem_type)
 
             optional_type._cache[elem_type] = optional_type_inst
 
@@ -647,16 +609,13 @@ class tuple_type:
                     p = Packer()
 
                     for elem, elem_type in zip(value, elem_types):
-                        p.pack_value(elem, T=elem_type)
+                        p.pack(elem, T=elem_type)
 
                     return p.data
 
                 @staticmethod
                 def unpack(up):
-                    value = tuple(
-                        up.unpack_value(T=elem_type) for elem_type in elem_types
-                    )
-                    return None if any(elem is None for elem in value) else value
+                    return tuple(up.unpack(T=elem_type) for elem_type in elem_types)
 
             tuple_type._cache[elem_types] = tuple_type_inst
 
@@ -682,7 +641,4 @@ def unpack(Ts, data):
     if not isinstance(Ts, tuple):
         Ts = (Ts,)
     up = Unpacker(data)
-    unpacked = tuple(up.unpack(T) for T in Ts)
-    if any(value is None for value in unpacked):
-        return None
-    return unpacked
+    return tuple_type.of(*Ts).unpack(up)
