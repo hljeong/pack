@@ -1,4 +1,4 @@
-import copy
+from copy import deepcopy
 from enum import Enum
 import struct
 
@@ -37,9 +37,6 @@ class TypeId(Enum):
     Tuple = 0x43
 
 
-_cached_type = IdDict()
-
-
 def deduce_type(value):
     def fail(reason=None):
         if reason:
@@ -47,8 +44,8 @@ def deduce_type(value):
         else:
             raise ValueError(f"{value!r} has unsupported type")
 
-    if value in _cached_type:
-        return _cached_type[value]
+    if value in Type._cached:
+        return Type._cached[value]
 
     elif isinstance(value, int):
         return Int32
@@ -75,14 +72,6 @@ def deduce_type(value):
 
     # optional cannot be deduced
     fail("not implemented")
-
-
-@parametrize("T")
-def typed(value, T=None):
-    value = copy.deepcopy(value)
-    T = T or deduce_type(value)
-    _cached_type[value] = T
-    return value
 
 
 class Pack:
@@ -259,8 +248,12 @@ class TypeMeta(type):
 
 
 class Type(metaclass=TypeMeta):
+    _cached = IdDict()
+
     def __new__(cls, value):
-        return typed[cls](value)
+        value = deepcopy(value)
+        Type._cached[value] = cls
+        return value
 
     @classmethod
     def validate(cls, value):
