@@ -3,12 +3,11 @@ from enum import Enum
 import struct
 
 from py_utils.dicts import EqDict, IdDict
-from py_utils.parametrize import parametrize, named_parametrize, Parametrized
+from py_utils.parametrize import parametrize, Parametrized
 from py_utils.sentinel import Sentinel
 
 # todo: type annotations?
 # todo: add switch for untyped vs typed packing
-# todo: parametrized methods
 
 
 Unit = Sentinel("Unit")
@@ -39,7 +38,7 @@ class TypeId(Enum):
 _cached_type = IdDict()
 
 
-def resolve_type(value):
+def deduce_type(value):
     def fail(reason=None):
         if reason:
             raise ValueError(f"{value!r} has unsupported type: {reason}")
@@ -59,25 +58,27 @@ def resolve_type(value):
         if len(value) == 0:
             fail("list with length 0")
 
-        elem_type = resolve_type(value[0])
+        T = deduce_type(value[0])
         # todo: implement any(not castable(elem, elem_type) for ...)?
-        if any(resolve_type(elem) is not elem_type for elem in value):
+        if any(deduce_type(elem) is not T for elem in value):
             fail("not all elements have the same type")
 
-        return List[elem_type]
+        return List[T]
 
     elif isinstance(value, str):
         return String
 
-    # todo: optional, tuple
+    elif isinstance(value, tuple):
+        return Tuple[(deduce_type(elem) for elem in value)]
 
+    # optional cannot be deduced
     fail("not implemented")
 
 
-# todo: support UInt8(x) -> typed(x, T=UInt8)?
+@parametrize("T")
 def typed(value, T=None):
     value = copy.deepcopy(value)
-    T = T or resolve_type(value)
+    T = T or deduce_type(value)
     _cached_type[value] = T
     return value
 
@@ -122,17 +123,19 @@ class Packer:
     def _push(self, data):
         self.data += data
 
+    @parametrize("T")
     def pack(self, value, T=None):
-        T = T or resolve_type(value)
+        T = T or deduce_type(value)
         assert T is not None
         self._push(T.pack(value))
         return self
 
+    @parametrize("T")
     def pack_typed(self, value, T=None):
-        T = T or resolve_type(value)
+        T = T or deduce_type(value)
         assert T is not None
         self._push(T.type_info)
-        self.pack(value, T=T)
+        self.pack[T](value)
         return self
 
 
@@ -156,9 +159,11 @@ class Unpacker:
         self.idx += n
         return data
 
+    @parametrize()
     def unpack(self, T):
         return T.unpack(self)
 
+    @parametrize()
     def unpack_typed(self, T):
         # todo: type name
         type_data = self.consume(len(T.type_info))
@@ -205,10 +210,10 @@ class TypeInfo(Pack):
             return Int16
 
         elif self.data[0] == 0x1A:
-            return Int32Type
+            return Int32
 
         elif self.data[0] == 0x1B:
-            return Int64Type
+            return Int64
 
         elif self.data[0] == 0x20:
             return Float
@@ -243,7 +248,12 @@ class TypeInfo(Pack):
             raise ValueError(f"bad type info: {list(self.data)}")
 
 
-class Type:
+class TypeMeta(type):
+    def __new__(cls, value):
+        return typed[cls](value)
+
+
+class Type(TypeMeta):
     @classmethod
     def validate(cls, value):
         raise NotImplementedError
@@ -269,17 +279,17 @@ class TypeInfoType(Type):
     @classmethod
     def pack_value(cls, value):
         p = Packer()
-        p.pack(len(value), T=UInt8)
+        p.pack[UInt8](len(value))
         for byte in value:
-            p.pack(byte, T=UInt8)
+            p.pack[UInt8](byte)
         return p.data
 
     @classmethod
     def unpack(cls, up):
         value = list()
-        n = up.unpack(T=UInt8)
+        n = up.unpack[UInt8]()
         for _ in range(n):
-            value.append(up.unpack(T=UInt8))
+            value.append(up.unpack[UInt8]())
         return TypeInfo(bytes(value))
 
 
@@ -439,37 +449,37 @@ class List(Parametrized):
     _cache = dict()
 
     @staticmethod
-    def of(elem_type):
-        if elem_type not in List._cache:
+    def of(T):
+        if T not in List._cache:
 
             class ListInst(Type):
-                type_info = TypeInfo(TypeId.List.value, elem_type.type_info)
+                type_info = TypeInfo(TypeId.List.value, T.type_info)
 
                 @classmethod
                 def validate(cls, value):
                     assert isinstance(value, list)
                     for elem in value:
-                        elem_type.validate(elem)
+                        T.validate(elem)
 
                 @classmethod
                 def pack_value(cls, value):
                     p = Packer()
-                    p.pack(len(value), T=UInt32)
+                    p.pack[UInt32](len(value))
                     for elem in value:
-                        p.pack(elem, T=elem_type)
+                        p.pack[T](elem)
                     return p.data
 
                 @classmethod
                 def unpack(cls, up):
                     value = list()
-                    n = up.unpack(T=UInt32)
+                    n = up.unpack[UInt32]()
                     for _ in range(n):
-                        value.append(up.unpack(T=elem_type))
+                        value.append(up.unpack[T]())
                     return value
 
-            List._cache[elem_type] = ListInst
+            List._cache[T] = ListInst
 
-        return List._cache[elem_type]
+        return List._cache[T]
 
 
 class String(Type):
@@ -482,18 +492,18 @@ class String(Type):
     @classmethod
     def pack_value(cls, value):
         p = Packer()
-        p.pack(len(value), T=UInt32)
+        p.pack[UInt32](len(value))
         for ch in value:
-            p.pack(ord(ch), T=UInt8)
+            p.pack[UInt8](ord(ch))
         return p.data
 
     @classmethod
     def unpack(cls, up):
         # todo: use StringIO for efficiency
         value = ""
-        n = up.unpack(T=UInt32)
+        n = up.unpack[UInt32]()
         for _ in range(n):
-            value += chr(up.unpack(T=UInt8))
+            value += chr(up.unpack[UInt8]())
         return value
 
 
@@ -501,84 +511,82 @@ class Optional(Parametrized):
     _cache = dict()
 
     @staticmethod
-    def of(elem_type):
-        if elem_type not in Optional._cache:
+    def of(T):
+        if T not in Optional._cache:
 
             class OptionalInst(Type):
-                type_info = TypeInfo(TypeId.Optional.value, elem_type.type_info)
+                type_info = TypeInfo(TypeId.Optional.value, T.type_info)
 
                 @classmethod
                 def validate(cls, value):
-                    assert value is Nullopt or elem_type.validate(value)
+                    assert value is Nullopt or T.validate(value)
 
                 @classmethod
                 def pack_value(cls, value):
                     p = Packer()
 
-                    p.pack(value is not Nullopt, T=Bool)
+                    p.pack[Bool](value is not Nullopt)
 
                     if value is not Nullopt:
-                        p.pack(value, T=elem_type)
+                        p.pack[T](value)
 
                     return p.data
 
                 @classmethod
                 def unpack(cls, up):
-                    exists = up.unpack(T=Bool)
+                    exists = up.unpack[Bool]()
 
                     if not exists:
                         return Nullopt
 
-                    return up.unpack(T=elem_type)
+                    return up.unpack[T]()
 
-            Optional._cache[elem_type] = OptionalInst
+            Optional._cache[T] = OptionalInst
 
-        return Optional._cache[elem_type]
+        return Optional._cache[T]
 
 
 class Tuple(Parametrized):
     _cache = EqDict()
 
     @staticmethod
-    def of(elem_types):
-        if elem_types not in Tuple._cache:
+    def of(Ts):
+        if Ts not in Tuple._cache:
 
             class TupleInst(Type):
                 type_info = TypeInfo(
                     TypeId.Tuple.value,
-                    List.of(TypeInfoType).pack(
-                        list(elem_type.type_info for elem_type in elem_types)
-                    ),
+                    List[TypeInfoType].pack(list(T.type_info for T in Ts)),
                 )
 
                 @classmethod
                 def validate(cls, value):
                     assert isinstance(value, tuple)
-                    assert len(value) == len(elem_types)
-                    for elem, elem_type in zip(value, elem_types):
-                        elem_type.validate(elem)
+                    assert len(value) == len(Ts)
+                    for elem, T in zip(value, Ts):
+                        T.validate(elem)
 
                 @classmethod
                 def pack_value(cls, value):
                     p = Packer()
 
-                    for elem, elem_type in zip(value, elem_types):
-                        p.pack(elem, T=elem_type)
+                    for elem, T in zip(value, Ts):
+                        p.pack[T](elem)
 
                     return p.data
 
                 @classmethod
                 def unpack(cls, up):
-                    return tuple(up.unpack(T=elem_type) for elem_type in elem_types)
+                    return tuple(up.unpack[T]() for T in Ts)
 
-            Tuple._cache[elem_types] = TupleInst
+            Tuple._cache[Ts] = TupleInst
 
-        return Tuple._cache[elem_types]
+        return Tuple._cache[Ts]
 
 
-@named_parametrize("T")
+@parametrize("T")
 def pack_one(value, T=None):
-    return Packer().pack(value, T=T or resolve_type(value)).data
+    return Packer().pack[T or deduce_type(value)](value).data
 
 
 # todo: figure out how to parametrize this
@@ -589,12 +597,12 @@ def pack(*values):
     return p.data
 
 
-@parametrize
+@parametrize()
 def unpack_one(T, data):
     return Unpacker(data).unpack(T)
 
 
-@parametrize
+@parametrize()
 def unpack(Ts, data):
     if not isinstance(Ts, tuple):
         Ts = (Ts,)

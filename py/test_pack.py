@@ -2,38 +2,30 @@ from py_utils.test import Parameters, parametrize
 
 from pack.pack import (
     Nullopt,
-    resolve_type,
+    deduce_type,
     pack_one,
     unpack_one,
     UInt32,
     Int8,
-    Bool,
     List,
-    String,
     Optional,
-    Tuple,
 )
 
 parameters = [
-    Parameters("UInt32", 5, UInt32),
-    Parameters("List[Int8]", [-1, 1, -2, 2, -3, 3, -4, 5], List[Int8]),
-    Parameters("String", "hello world", None),
-    Parameters("Optional[UInt32] = Nullopt", Nullopt, Optional[UInt32]),
-    Parameters(
-        "Tuple",
-        ([-1, -2, 3, 4], Nullopt, "hi", 12),
-        Tuple[List[Int8], Optional[Bool], String, UInt32],
-    ),
+    Parameters("UInt32", 5),
+    Parameters("List[Int8]", List[Int8]([-1, 1, -2, 2, -3, 3, -4, 5])),
+    Parameters("String", "hello world"),
+    Parameters("Optional[UInt32] = Nullopt", Optional[UInt32](Nullopt)),
+    Parameters("Tuple", ([-1, -2, 3, 4], False, "hi", 12)),
 ]
 
 
-@parametrize("value, T", parameters)
-def test_pack(value, T):
-    T = T or resolve_type(value)
-
+@parametrize("value", parameters)
+def test_pack(value):
+    T = deduce_type(value)
     print(f"input: {value!r}")
 
-    packed = pack_one[T](value)
+    packed = pack_one(value)
     print("packed:")
     packed.dump()
 
