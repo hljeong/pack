@@ -2,9 +2,11 @@ import copy
 from enum import Enum
 import struct
 
-from py_utils.dicts import EqDict, IdDict
+from py_utils.dicts import EqDict, IdDict, WithDefault
+from py_utils.meta import meta, submetaclass_of
 from py_utils.parametrize import parametrize, Parametrized
 from py_utils.sentinel import Sentinel
+
 
 # todo: type annotations?
 # todo: add switch for untyped vs typed packing
@@ -249,11 +251,17 @@ class TypeInfo(Pack):
 
 
 class TypeMeta(type):
+    def __str__(cls):
+        return cls.__name__
+
+    def __repr__(cls):
+        return f"type {cls}"
+
+
+class Type(metaclass=TypeMeta):
     def __new__(cls, value):
         return typed[cls](value)
 
-
-class Type(TypeMeta):
     @classmethod
     def validate(cls, value):
         raise NotImplementedError
@@ -266,6 +274,19 @@ class Type(TypeMeta):
     def pack(cls, value):
         cls.validate(value)
         return cls.pack_value(value)
+
+
+class ParametrizedType(submetaclass_of(Parametrized, Type)):
+    _cache = WithDefault(IdDict(), lambda _: EqDict())
+
+    @classmethod
+    def of(cls, T_or_Ts):
+        cache = ParametrizedType._cache[cls]
+        # todo: cache should always hit except on the first lookup, confirm
+        if T_or_Ts in cache:
+            cache[cls] = cls[T_or_Ts]
+
+        return cache[T_or_Ts]
 
 
 # todo: nomenclature inconsistency...
@@ -332,6 +353,7 @@ class UInt(Parametrized):
         UINT_STRUCT_FMT = {8: "B", 16: "H", 32: "I", 64: "Q"}
         assert bitwidth in UINT_TYPE_ID
 
+        @meta(__str__=lambda _: f"UInt{bitwidth}")
         class UIntInst(Type):
             type_info = TypeInfo(UINT_TYPE_ID[bitwidth].value)
 
@@ -369,6 +391,7 @@ class Int(Parametrized):
         INT_STRUCT_FMT = {8: "b", 16: "h", 32: "i", 64: "q"}
         assert bitwidth in INT_TYPE_ID
 
+        @meta(__str__=lambda _: f"Int{bitwidth}")
         class IntInst(Type):
             type_info = TypeInfo(INT_TYPE_ID[bitwidth].value)
 
@@ -444,42 +467,36 @@ class Bool(Type):
         return bool(up.consume(1)[0])
 
 
-class List(Parametrized):
-    # todo: should parametrized types use builtin dict?
-    _cache = dict()
+class List(ParametrizedType):
+    @classmethod
+    def of(cls, T):  # type: ignore  # todo: [0] type check error fixable?
+        @meta(__str__=lambda _: f"List[{T}]")
+        class ListInst(Type):
+            type_info = TypeInfo(TypeId.List.value, T.type_info)
 
-    @staticmethod
-    def of(T):
-        if T not in List._cache:
+            @classmethod
+            def validate(cls, value):
+                assert isinstance(value, list)
+                for elem in value:
+                    T.validate(elem)
 
-            class ListInst(Type):
-                type_info = TypeInfo(TypeId.List.value, T.type_info)
+            @classmethod
+            def pack_value(cls, value):
+                p = Packer()
+                p.pack[UInt32](len(value))
+                for elem in value:
+                    p.pack[T](elem)
+                return p.data
 
-                @classmethod
-                def validate(cls, value):
-                    assert isinstance(value, list)
-                    for elem in value:
-                        T.validate(elem)
+            @classmethod
+            def unpack(cls, up):
+                value = list()
+                n = up.unpack[UInt32]()
+                for _ in range(n):
+                    value.append(up.unpack[T]())
+                return value
 
-                @classmethod
-                def pack_value(cls, value):
-                    p = Packer()
-                    p.pack[UInt32](len(value))
-                    for elem in value:
-                        p.pack[T](elem)
-                    return p.data
-
-                @classmethod
-                def unpack(cls, up):
-                    value = list()
-                    n = up.unpack[UInt32]()
-                    for _ in range(n):
-                        value.append(up.unpack[T]())
-                    return value
-
-            List._cache[T] = ListInst
-
-        return List._cache[T]
+        return ListInst
 
 
 class String(Type):
@@ -507,81 +524,71 @@ class String(Type):
         return value
 
 
-class Optional(Parametrized):
-    _cache = dict()
+class Optional(ParametrizedType):
+    @classmethod
+    def of(cls, T):  # type: ignore  # todo: see [0]
+        @meta(__str__=lambda _: f"Optional[{T}]")
+        class OptionalInst(Type):
+            type_info = TypeInfo(TypeId.Optional.value, T.type_info)
 
-    @staticmethod
-    def of(T):
-        if T not in Optional._cache:
+            @classmethod
+            def validate(cls, value):
+                assert value is Nullopt or T.validate(value)
 
-            class OptionalInst(Type):
-                type_info = TypeInfo(TypeId.Optional.value, T.type_info)
+            @classmethod
+            def pack_value(cls, value):
+                p = Packer()
 
-                @classmethod
-                def validate(cls, value):
-                    assert value is Nullopt or T.validate(value)
+                p.pack[Bool](value is not Nullopt)
 
-                @classmethod
-                def pack_value(cls, value):
-                    p = Packer()
+                if value is not Nullopt:
+                    p.pack[T](value)
 
-                    p.pack[Bool](value is not Nullopt)
+                return p.data
 
-                    if value is not Nullopt:
-                        p.pack[T](value)
+            @classmethod
+            def unpack(cls, up):
+                exists = up.unpack[Bool]()
 
-                    return p.data
+                if not exists:
+                    return Nullopt
 
-                @classmethod
-                def unpack(cls, up):
-                    exists = up.unpack[Bool]()
+                return up.unpack[T]()
 
-                    if not exists:
-                        return Nullopt
-
-                    return up.unpack[T]()
-
-            Optional._cache[T] = OptionalInst
-
-        return Optional._cache[T]
+        return OptionalInst
 
 
-class Tuple(Parametrized):
-    _cache = EqDict()
+class Tuple(ParametrizedType):
+    @classmethod
+    def of(cls, Ts):  # type: ignore  # todo: see [0]
+        @meta(__str__=lambda _: f"Tuple[{', '.join(map(repr, Ts))}]")
+        class TupleInst(Type):
+            type_info = TypeInfo(
+                TypeId.Tuple.value,
+                List[TypeInfoType].pack(list(T.type_info for T in Ts)),
+            )
 
-    @staticmethod
-    def of(Ts):
-        if Ts not in Tuple._cache:
+            @classmethod
+            def validate(cls, value):
+                assert isinstance(value, tuple)
+                assert len(value) == len(Ts)
+                for elem, T in zip(value, Ts):
+                    T.validate(elem)
 
-            class TupleInst(Type):
-                type_info = TypeInfo(
-                    TypeId.Tuple.value,
-                    List[TypeInfoType].pack(list(T.type_info for T in Ts)),
-                )
+            @classmethod
+            def pack_value(cls, value):
+                p = Packer()
 
-                @classmethod
-                def validate(cls, value):
-                    assert isinstance(value, tuple)
-                    assert len(value) == len(Ts)
-                    for elem, T in zip(value, Ts):
-                        T.validate(elem)
+                for elem, T in zip(value, Ts):
+                    p.pack[T](elem)
 
-                @classmethod
-                def pack_value(cls, value):
-                    p = Packer()
+                return p.data
 
-                    for elem, T in zip(value, Ts):
-                        p.pack[T](elem)
+            @classmethod
+            def unpack(cls, up):
+                return tuple(up.unpack[T]() for T in Ts)
 
-                    return p.data
-
-                @classmethod
-                def unpack(cls, up):
-                    return tuple(up.unpack[T]() for T in Ts)
-
-            Tuple._cache[Ts] = TupleInst
-
-        return Tuple._cache[Ts]
+        return TupleInst
 
 
 @parametrize("T")
