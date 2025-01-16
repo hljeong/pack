@@ -233,9 +233,9 @@ class TypeInfo(Pack):
 
         elif self.data[0] == 0x43:
             # todo: ugly
-            return Tuple.of(
-                *(map(T, List[TypeInfoType].unpack(Unpacker(self.data[1:]))))
-            )
+            return Tuple[
+                tuple(map(T, List[TypeInfoType].unpack(Unpacker(self.data[1:]))))
+            ]
 
         else:
             raise ValueError(f"bad type info: {list(self.data)}")
