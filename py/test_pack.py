@@ -5,10 +5,12 @@ from pack.pack import (
     deduce_type,
     pack_one,
     unpack_one,
+    UInt8,
     UInt32,
     Int8,
     List,
     Optional,
+    Tuple,
 )
 
 parameters = [
@@ -36,3 +38,9 @@ def test_pack(value):
     except Exception as e:
         print(f"failed to unpack: {e}")
         assert False, f"failed to unpack: {e}"
+
+
+def test_pack_misc():
+    assert str(List) == "List"
+    todo: fix
+    assert repr(Tuple[Optional[UInt8]]) == "type Tuple[Optional[UInt8]]"

@@ -10,6 +10,7 @@ from py_utils.sentinel import Sentinel
 
 # todo: type annotations?
 # todo: add switch for untyped vs typed packing
+# todo: provide T = lambda type_info: type_info.T (or name it T_of)?
 
 
 Unit = Sentinel("Unit")
@@ -554,7 +555,10 @@ class Optional(ParametrizedType):
 class Tuple(ParametrizedType):
     @classmethod
     def of(cls, Ts):  # type: ignore  # todo: see [0]
-        @meta(__str__=lambda _: f"Tuple[{', '.join(map(repr, Ts))}]")
+        if not isinstance(Ts, tuple):
+            Ts = (Ts,)
+
+        @meta(__str__=lambda _: f"Tuple[{', '.join(map(str, Ts))}]")
         class TupleInst(Type):
             type_info = TypeInfo(
                 TypeId.Tuple.value,
