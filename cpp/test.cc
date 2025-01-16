@@ -33,5 +33,8 @@ int main() {
   test<std::tuple<std::vector<int8_t>, std::optional<bool>, std::string,
                   uint32_t>>({{-1, -2, 3, 4}, std::nullopt, "hi", 12});
 
+  assert(pack::unpack_one<std::string>(pack::pack(std::string_view("12"))) ==
+         "12");
+
   return 0;
 }

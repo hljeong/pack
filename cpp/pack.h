@@ -319,6 +319,20 @@ template <> struct Type<std::string> {
   }
 };
 
+template <> struct Type<std::string_view> : Type<std::string> {
+  static Pack pack(std::string_view value) {
+    Packer p;
+
+    p.pack<uint32_t>(value.size());
+
+    for (const auto &ch : value) {
+      p.pack<uint8_t>(ch);
+    }
+
+    return *p;
+  }
+};
+
 template <typename T> struct Type<std::optional<T>> {
   inline static const TypeInfo type_info =
       TypeInfo(TypeId::Optional, pack::type_info<T>);
