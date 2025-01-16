@@ -10,7 +10,6 @@ from py_utils.sentinel import Sentinel
 
 # todo: type annotations?
 # todo: add switch for untyped vs typed packing
-# todo: provide T = lambda type_info: type_info.T (or name it T_of)?
 
 
 Unit = Sentinel("Unit")
@@ -169,6 +168,13 @@ class Unpacker:
         return self.unpack(T)
 
 
+def T(type_info):
+    if isinstance(type_info, TypeInfo):
+        return type_info.T
+
+    return TypeInfo(type_info).T
+
+
 class TypeInfo(Pack):
     def __init__(self, *comps):
         super().__init__(*comps)
@@ -217,23 +223,18 @@ class TypeInfo(Pack):
             return Bool
 
         elif self.data[0] == 0x40:
-            return List[TypeInfo(self.data[1:]).T]
+            return List[T(self.data[1:])]
 
         elif self.data[0] == 0x41:
             return String
 
         elif self.data[0] == 0x42:
-            return Optional[TypeInfo(self.data[1:]).T]
+            return Optional[T(self.data[1:])]
 
         elif self.data[0] == 0x43:
             # todo: ugly
             return Tuple.of(
-                *(
-                    elem_type_info.T
-                    for elem_type_info in List[TypeInfoType].unpack(
-                        Unpacker(self.data[1:])
-                    )
-                )
+                *(map(T, List[TypeInfoType].unpack(Unpacker(self.data[1:]))))
             )
 
         else:
