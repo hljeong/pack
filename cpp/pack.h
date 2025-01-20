@@ -5,11 +5,13 @@
 #include <initializer_list>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <tuple>
+#include <variant>
 #include <vector>
 
-#include "cpp_utils/fmt/fmt.h"
+#include "../lib/cpp_utils/sugar/sugar.h"
 
 namespace pack {
 
@@ -36,6 +38,7 @@ enum class TypeId : uint8_t {
   String = 0x41,
   Optional = 0x42,
   Tuple = 0x43,
+  Union = 0x44,
 };
 
 using Bytes = std::vector<uint8_t>;
@@ -374,6 +377,41 @@ template <typename... Ts> struct Type<std::tuple<Ts...>> {
   }
 
   static std::tuple<Ts...> unpack(Unpacker &up) { return {up.unpack<Ts>()...}; }
+};
+
+template <typename... Ts> struct Type<std::variant<Ts...>> {
+  inline static const TypeInfo type_info =
+      TypeInfo(TypeId::Union,
+               Type<std::vector<TypeInfo>>::pack({pack::type_info<Ts>...}));
+
+  static Pack pack(const std::variant<Ts...> &value) {
+    Packer p;
+
+    std::visit(sugar::overloads{[&](Ts) {
+                 p.pack(Type<Ts>::type_info);
+                 p.pack(std::get<Ts>(value));
+               }...},
+               value);
+
+    return *p;
+  }
+
+  static std::variant<Ts...> unpack(Unpacker &up) {
+    const auto type_info = up.unpack<TypeInfo>();
+
+    std::variant<Ts...> value;
+
+    // exactly one branch should execute
+    (
+        [&] {
+          if (type_info == Type<Ts>::type_info) {
+            value = up.unpack<Ts>();
+          }
+        }(),
+        ...);
+
+    return value;
+  }
 };
 
 template <typename T> inline static Pack pack_one(const T &value) {

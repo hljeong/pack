@@ -35,6 +35,7 @@ class TypeId(Enum):
     String = 0x41
     Optional = 0x42
     Tuple = 0x43
+    Union = 0x44
 
 
 def deduce_type(value):
@@ -183,6 +184,7 @@ class TypeInfo(Pack):
     # todo: is there an easier way to do this? (how to deal with custom type ids?)
     @property
     def T(self):
+        # todo: possible to make TypeInfo a union type and simplify this?
         if self.data[0] == 0x01:
             return TypeInfoType
 
@@ -232,10 +234,10 @@ class TypeInfo(Pack):
             return Optional[T(self.data[1:])]
 
         elif self.data[0] == 0x43:
-            # todo: ugly
-            return Tuple[
-                tuple(map(T, List[TypeInfoType].unpack(Unpacker(self.data[1:]))))
-            ]
+            return Tuple[map(T, unpack[List[TypeInfoType]](self.data[1:]))]
+
+        elif self.data[0] == 0x44:
+            return Union[map(T, unpack[List[TypeInfoType]](self.data[1:]))]
 
         else:
             raise ValueError(f"bad type info: {list(self.data)}")
@@ -250,6 +252,7 @@ class TypeMeta(type):
 
 
 class Type(metaclass=TypeMeta):
+    # todo: bug with string literals
     _cached = IdDict()
 
     def __new__(cls, value):
@@ -258,12 +261,17 @@ class Type(metaclass=TypeMeta):
         return value
 
     @classmethod
-    def validate(cls, value):
+    def valid(cls, value):
         raise NotImplementedError
 
     @classmethod
     def pack_value(cls, value):
         raise NotImplementedError
+
+    @classmethod
+    def validate(cls, value):
+        if not cls.valid(value):
+            raise ValueError("todo")
 
     @classmethod
     def pack(cls, value):
@@ -289,8 +297,8 @@ class TypeInfoType(Type):
     type_info = TypeInfo(TypeId.TypeInfo.value)
 
     @classmethod
-    def validate(cls, value):
-        assert isinstance(value, TypeInfo)
+    def valid(cls, value):
+        return isinstance(value, TypeInfo)
 
     @classmethod
     def pack_value(cls, value):
@@ -314,8 +322,8 @@ class UnitType:
     type_info = TypeInfo(TypeId.Unit.value)
 
     @classmethod
-    def validate(cls, value):
-        assert value is Unit
+    def valid(cls, value):
+        return value is Unit
 
     @classmethod
     def pack_value(cls, _):
@@ -353,9 +361,8 @@ class UInt(Parametrized):
             type_info = TypeInfo(UINT_TYPE_ID[bitwidth].value)
 
             @classmethod
-            def validate(cls, value):
-                assert isinstance(value, int)
-                assert 0 <= value < (1 << bitwidth)
+            def valid(cls, value):
+                return isinstance(value, int) and 0 <= value < (1 << bitwidth)
 
             @classmethod
             def pack_value(cls, value):
@@ -391,9 +398,10 @@ class Int(Parametrized):
             type_info = TypeInfo(INT_TYPE_ID[bitwidth].value)
 
             @classmethod
-            def validate(cls, value):
-                assert isinstance(value, int)
-                assert -(1 << (bitwidth - 1)) <= value < (1 << (bitwidth - 1))
+            def valid(cls, value):
+                return isinstance(value, int) and -(1 << (bitwidth - 1)) <= value < (
+                    1 << (bitwidth - 1)
+                )
 
             @classmethod
             def pack_value(cls, value):
@@ -417,8 +425,8 @@ class Float(Type):
 
     # todo: possible to automate checking for castable types?
     @classmethod
-    def validate(cls, value):
-        assert isinstance(value, float) or isinstance(value, int)
+    def valid(cls, value):
+        return isinstance(value, float) or isinstance(value, int)
 
     @classmethod
     def pack_value(cls, value):
@@ -434,8 +442,8 @@ class Double(Type):
 
     # todo: possible to automate checking for castable types?
     @classmethod
-    def validate(cls, value):
-        assert isinstance(value, float) or isinstance(value, int)
+    def valid(cls, value):
+        return isinstance(value, float) or isinstance(value, int)
 
     @classmethod
     def pack_value(cls, value):
@@ -450,8 +458,8 @@ class Bool(Type):
     type_info = TypeInfo(TypeId.Bool.value)
 
     @classmethod
-    def validate(cls, value):
-        assert isinstance(value, bool)
+    def valid(cls, value):
+        return isinstance(value, bool)
 
     @classmethod
     def pack_value(cls, value):
@@ -470,10 +478,8 @@ class List(ParametrizedType):
             type_info = TypeInfo(TypeId.List.value, T.type_info)
 
             @classmethod
-            def validate(cls, value):
-                assert isinstance(value, list)
-                for elem in value:
-                    T.validate(elem)
+            def valid(cls, value):
+                return isinstance(value, list) and all(T.valid(elem) for elem in value)
 
             @classmethod
             def pack_value(cls, value):
@@ -498,8 +504,8 @@ class String(Type):
     type_info = TypeInfo(TypeId.String.value)
 
     @classmethod
-    def validate(cls, value):
-        assert isinstance(value, str)
+    def valid(cls, value):
+        return isinstance(value, str)
 
     @classmethod
     def pack_value(cls, value):
@@ -527,8 +533,8 @@ class Optional(ParametrizedType):
             type_info = TypeInfo(TypeId.Optional.value, T.type_info)
 
             @classmethod
-            def validate(cls, value):
-                assert value is Nullopt or T.validate(value)
+            def valid(cls, value):
+                return value is Nullopt or T.valid(value)
 
             @classmethod
             def pack_value(cls, value):
@@ -563,21 +569,22 @@ class Tuple(ParametrizedType):
         class TupleInst(Type):
             type_info = TypeInfo(
                 TypeId.Tuple.value,
-                List[TypeInfoType].pack(list(T.type_info for T in Ts)),
+                List[TypeInfoType].pack([T.type_info for T in Ts]),
             )
 
             @classmethod
-            def validate(cls, value):
-                assert isinstance(value, tuple)
-                assert len(value) == len(Ts)
-                for elem, T in zip(value, Ts):
-                    T.validate(elem)
+            def valid(cls, value):
+                return (
+                    isinstance(value, tuple)
+                    and len(value) == len(Ts)
+                    and all(T.valid(elem) for T, elem in zip(Ts, value))
+                )
 
             @classmethod
             def pack_value(cls, value):
                 p = Packer()
 
-                for elem, T in zip(value, Ts):
+                for T, elem in zip(Ts, value):
                     p.pack[T](elem)
 
                 return p.data
@@ -587,6 +594,42 @@ class Tuple(ParametrizedType):
                 return tuple(up.unpack[T]() for T in Ts)
 
         return TupleInst
+
+
+class Union(ParametrizedType):
+    @classmethod
+    def of(cls, Ts):  # type: ignore  # todo: see [0]
+        if not isinstance(Ts, tuple):
+            Ts = (Ts,)
+
+        @meta(__str__=lambda _: f"Union[{', '.join(map(str, Ts))}]")
+        class UnionInst(Type):
+            type_info = TypeInfo(
+                TypeId.Union.value,
+                List[TypeInfoType].pack([T.type_info for T in Ts]),
+            )
+
+            @classmethod
+            def valid(cls, value):
+                return sum(T.valid(value) for T in Ts) == 1
+
+            @classmethod
+            def pack_value(cls, value):
+                p = Packer()
+
+                # exactly one branch should execute
+                for T in Ts:
+                    if T.valid(value):
+                        p.pack[TypeInfoType](T.type_info)
+                        p.pack[T](value)
+
+                return p.data
+
+            @classmethod
+            def unpack(cls, up):
+                return up.unpack[up.unpack[TypeInfoType]().T]()
+
+        return UnionInst
 
 
 @parametrize("T")

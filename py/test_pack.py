@@ -10,7 +10,9 @@ from pack.pack import (
     Int8,
     List,
     Optional,
+    String,
     Tuple,
+    Union,
 )
 
 parameters = [
@@ -19,6 +21,7 @@ parameters = [
     Parameters("String", "hello world"),
     Parameters("Optional[UInt32] = Nullopt", Optional[UInt32](Nullopt)),
     Parameters("Tuple", ([-1, -2, 3, 4], False, "hi", 12)),
+    Parameters("Union[UInt32, String]", Union[UInt32, String]("bye")),
 ]
 
 
@@ -42,5 +45,4 @@ def test_pack(value):
 
 def test_pack_misc():
     assert str(List) == "List"
-    todo: fix
     assert repr(Tuple[Optional[UInt8]]) == "type Tuple[Optional[UInt8]]"

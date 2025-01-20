@@ -1,11 +1,14 @@
 #include <cassert>
 
+#include "../lib/cpp_utils/fmt/fmt.h"
 #include "pack.h"
 
+using namespace fmt;
 using namespace pack;
+using namespace std;
 
 template <typename T> void test(const T &value) {
-  printf("input: %s\n", fmt::repr(value).c_str());
+  printf("input: %s\n", repr(value).c_str());
 
   const auto packed = pack::pack(value);
   printf("packed:\n");
@@ -13,9 +16,9 @@ template <typename T> void test(const T &value) {
 
   try {
     const auto unpacked = pack::unpack_one<T>(packed);
-    printf("unpacked: %s\n", fmt::repr(unpacked).c_str());
+    printf("unpacked: %s\n", repr(unpacked).c_str());
     assert(value == unpacked);
-  } catch (const std::runtime_error &e) {
+  } catch (const runtime_error &e) {
     printf("failed to unpack: %s\n", e.what());
     assert(false);
   }
@@ -24,17 +27,18 @@ template <typename T> void test(const T &value) {
 int main() {
   test<uint32_t>(5);
 
-  test<std::vector<int8_t>>({-1, 1, -2, 2, -3, 3, -4, 4});
+  test<vector<int8_t>>({-1, 1, -2, 2, -3, 3, -4, 4});
 
-  test(std::string("hello world"));
+  test(string("hello world"));
 
-  test<std::optional<uint32_t>>(std::nullopt);
+  test<optional<uint32_t>>(nullopt);
 
-  test<std::tuple<std::vector<int8_t>, std::optional<bool>, std::string,
-                  uint32_t>>({{-1, -2, 3, 4}, std::nullopt, "hi", 12});
+  test<tuple<vector<int8_t>, optional<bool>, string, uint32_t>>(
+      {{-1, -2, 3, 4}, nullopt, "hi", 12});
 
-  assert(pack::unpack_one<std::string>(pack::pack(std::string_view("12"))) ==
-         "12");
+  assert(unpack_one<string>(pack::pack(string_view("12"))) == "12");
+
+  test<variant<uint32_t, string>>("hi");
 
   return 0;
 }
