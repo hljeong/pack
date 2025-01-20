@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PACK_H
+#define PACK_H
 
 #include <cstdint>
 #include <cstdio>
@@ -11,7 +12,7 @@
 #include <variant>
 #include <vector>
 
-#include "../lib/cpp_utils/sugar/sugar.h"
+#include "../lib/cpp_utils/sgr/sgr.h"
 
 namespace pack {
 
@@ -387,7 +388,7 @@ template <typename... Ts> struct Type<std::variant<Ts...>> {
   static Pack pack(const std::variant<Ts...> &value) {
     Packer p;
 
-    std::visit(sugar::overloads{[&](Ts) {
+    std::visit(sgr::overloads{[&](Ts) {
                  p.pack(Type<Ts>::type_info);
                  p.pack(std::get<Ts>(value));
                }...},
@@ -437,3 +438,5 @@ inline static std::tuple<Ts...> unpack(const Bytes &data) {
 }
 
 }; // namespace pack
+
+#endif
